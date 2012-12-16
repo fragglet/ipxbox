@@ -7,38 +7,38 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
-	"math/rand"
 )
 
 type IPXAddr [6]byte
 
 type Client struct {
-	addr *net.UDPAddr
+	addr    *net.UDPAddr
 	ipxAddr IPXAddr
 }
 
 type IPXHeaderAddr struct {
 	network [4]byte
-	addr IPXAddr
-	socket uint16
+	addr    IPXAddr
+	socket  uint16
 }
 
 type IPXHeader struct {
-	checksum uint16
-	length uint16
+	checksum     uint16
+	length       uint16
 	transControl byte
-	packetType byte
-	dest, src IPXHeaderAddr
+	packetType   byte
+	dest, src    IPXHeaderAddr
 }
 
-var ADDR_NULL = []byte{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
-var ADDR_BROADCAST = []byte{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }
+var ADDR_NULL = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+var ADDR_BROADCAST = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 var serverSocket *net.UDPConn
-var clients = map[string] *Client {}
-var clientsByIPX = map[IPXAddr] *Client {}
+var clients = map[string]*Client{}
+var clientsByIPX = map[IPXAddr]*Client{}
 
 func decodeIPXHeaderAddr(data []byte, addr *IPXHeaderAddr) {
 	copy(addr.network[0:], data[0:4])
@@ -94,7 +94,7 @@ func forwardPacket(header *IPXHeader, packet []byte) {
 }
 
 // Having received a broadcast packet, forward it to all clients.
-func forwardBroadcastPacket(header *IPXHeader, packet []byte, ) {
+func forwardBroadcastPacket(header *IPXHeader, packet []byte) {
 	for _, client := range clients {
 		if client.ipxAddr != header.src.addr {
 			serverSocket.WriteToUDP(packet, client.addr)
@@ -140,11 +140,11 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 	packet.length = 30
 	packet.transControl = 0
 
-	copy(packet.dest.network[0:], []byte{0,0,0,0})
+	copy(packet.dest.network[0:], []byte{0, 0, 0, 0})
 	copy(packet.dest.addr[0:], client.ipxAddr[0:])
 	packet.dest.socket = 2
 
-	copy(packet.src.network[0:], []byte{0,0,0,1})
+	copy(packet.src.network[0:], []byte{0, 0, 0, 1})
 	copy(packet.src.addr[0:], ADDR_BROADCAST[0:])
 	packet.src.socket = 2
 
@@ -153,7 +153,7 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 
 func isRegistrationPacket(header *IPXHeader) bool {
 	return header.dest.socket == 2 &&
-	    bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
+		bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
 }
 
 func isBroadcast(header *IPXHeader) bool {
@@ -193,14 +193,14 @@ func createSocket(addr string) *net.UDPConn {
 	udp4Addr, err := net.ResolveUDPAddr("up4", addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to resolve address: ",
-		            err.Error())
+			err.Error())
 		os.Exit(1)
 	}
 
 	socket, err := net.ListenUDP("udp", udp4Addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open socket: ",
-		            err.Error())
+			err.Error())
 		os.Exit(1)
 	}
 
@@ -222,4 +222,3 @@ func main() {
 		processPacket(buf[0:packetLen], addr)
 	}
 }
-
