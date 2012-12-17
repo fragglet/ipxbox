@@ -35,23 +35,26 @@ type IPXHeader struct {
 	dest, src    IPXHeaderAddr
 }
 
+type IPXServer struct {
+	socket           *net.UDPConn
+	clients          map[string]*Client
+	clientsByIPX     map[IPXAddr]*Client
+	timeoutCheckTime time.Time
+}
+
 // Clients time out after 10 minutes of inactivity.
 const CLIENT_TIMEOUT = 10 * 60 * 1e9
 
 var ADDR_NULL = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 var ADDR_BROADCAST = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
-var serverSocket *net.UDPConn
-var clients = map[string]*Client{}
-var clientsByIPX = map[IPXAddr]*Client{}
-
-func (addr *IPXHeaderAddr) decodeIPXHeaderAddr(data []byte) {
+func (addr *IPXHeaderAddr) Decode(data []byte) {
 	copy(addr.network[0:], data[0:4])
 	copy(addr.addr[0:], data[4:10])
 	addr.socket = uint16((data[10] << 8) | data[11])
 }
 
-func (header *IPXHeader) decodeIPXHeader(packet []byte) bool {
+func (header *IPXHeader) Decode(packet []byte) bool {
 	if len(packet) < 30 {
 		return false
 	}
@@ -61,20 +64,20 @@ func (header *IPXHeader) decodeIPXHeader(packet []byte) bool {
 	header.transControl = packet[4]
 	header.packetType = packet[5]
 
-	header.dest.decodeIPXHeaderAddr(packet[6:18])
-	header.src.decodeIPXHeaderAddr(packet[18:30])
+	header.dest.Decode(packet[6:18])
+	header.src.Decode(packet[18:30])
 
 	return true
 }
 
-func (addr *IPXHeaderAddr) encodeIPXHeaderAddr(data []byte) {
+func (addr *IPXHeaderAddr) Encode(data []byte) {
 	copy(data[0:4], addr.network[0:4])
 	copy(data[4:10], addr.addr[0:])
 	data[10] = byte(addr.socket >> 8)
 	data[11] = byte(addr.socket & 0xff)
 }
 
-func (header *IPXHeader) encodeIPXHeader() []byte {
+func (header *IPXHeader) Encode() []byte {
 	result := make([]byte, 30)
 	result[0] = byte(header.checksum >> 8)
 	result[1] = byte(header.checksum & 0xff)
@@ -83,24 +86,24 @@ func (header *IPXHeader) encodeIPXHeader() []byte {
 	result[4] = header.transControl
 	result[5] = header.packetType
 
-	header.dest.encodeIPXHeaderAddr(result[6:18])
-	header.src.encodeIPXHeaderAddr(result[18:30])
+	header.dest.Encode(result[6:18])
+	header.src.Encode(result[18:30])
 
 	return result
 }
 
-func (header IPXHeader) isRegistrationPacket() bool {
+func (header IPXHeader) IsRegistrationPacket() bool {
 	return header.dest.socket == 2 &&
 		bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
 }
 
-func (header IPXHeader) isBroadcast() bool {
+func (header IPXHeader) IsBroadcast() bool {
 	return bytes.Compare(header.dest.addr[0:], ADDR_BROADCAST) == 0
 }
 
 // Allocate a new random address that does not share an address with
 // an existing client.
-func newAddress() IPXAddr {
+func (server *IPXServer) NewAddress() IPXAddr {
 	var result IPXAddr
 
 	// Repeatedly generate a new IPX address until we generate
@@ -110,7 +113,7 @@ func newAddress() IPXAddr {
 			result[i] = byte(rand.Intn(255))
 		}
 
-		if _, ok := clientsByIPX[result]; !ok {
+		if _, ok := server.clientsByIPX[result]; !ok {
 			break
 		}
 	}
@@ -119,9 +122,9 @@ func newAddress() IPXAddr {
 }
 
 // Process a registration packet, adding a new client if necessary.
-func newClient(header *IPXHeader, addr *net.UDPAddr) {
+func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 	addrStr := addr.String()
-	client, ok := clients[addrStr]
+	client, ok := server.clients[addrStr]
 
 	if !ok {
 		now := time.Now()
@@ -129,11 +132,11 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 
 		client = new(Client)
 		client.addr = addr
-		client.ipxAddr = newAddress()
+		client.ipxAddr = server.NewAddress()
 		client.lastPacketTime = now
 
-		clients[addrStr] = client
-		clientsByIPX[client.ipxAddr] = client
+		server.clients[addrStr] = client
+		server.clientsByIPX[client.ipxAddr] = client
 	}
 
 	// Send a reply back to the client
@@ -150,38 +153,40 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 	copy(reply.src.addr[0:], ADDR_BROADCAST[0:])
 	reply.src.socket = 2
 
-	serverSocket.WriteToUDP(reply.encodeIPXHeader(), client.addr)
+	server.socket.WriteToUDP(reply.Encode(), client.addr)
 }
 
 // Having received a packet, forward it on to another client.
-func forwardPacket(header *IPXHeader, packet []byte) {
-	if client, ok := clientsByIPX[header.dest.addr]; ok {
-		serverSocket.WriteToUDP(packet, client.addr)
+func (server *IPXServer) ForwardPacket(header *IPXHeader, packet []byte) {
+	if client, ok := server.clientsByIPX[header.dest.addr]; ok {
+		server.socket.WriteToUDP(packet, client.addr)
 	}
 }
 
 // Having received a broadcast packet, forward it to all clients.
-func forwardBroadcastPacket(header *IPXHeader, packet []byte) {
-	for _, client := range clients {
+func (server *IPXServer) ForwardBroadcastPacket(header *IPXHeader,
+	packet []byte) {
+
+	for _, client := range server.clients {
 		if client.ipxAddr != header.src.addr {
-			serverSocket.WriteToUDP(packet, client.addr)
+			server.socket.WriteToUDP(packet, client.addr)
 		}
 	}
 }
 
 // Process a received UDP packet.
-func processPacket(packet []byte, addr *net.UDPAddr) {
+func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	var header IPXHeader
-	if !header.decodeIPXHeader(packet) {
+	if !header.Decode(packet) {
 		return
 	}
 
-	if header.isRegistrationPacket() {
-		newClient(&header, addr)
+	if header.IsRegistrationPacket() {
+		server.NewClient(&header, addr)
 		return
 	}
 
-	srcClient, ok := clients[addr.String()]
+	srcClient, ok := server.clients[addr.String()]
 	if !ok {
 		return
 	}
@@ -193,65 +198,79 @@ func processPacket(packet []byte, addr *net.UDPAddr) {
 
 	srcClient.lastPacketTime = time.Now()
 
-	if header.isBroadcast() {
-		forwardBroadcastPacket(&header, packet)
+	if header.IsBroadcast() {
+		server.ForwardBroadcastPacket(&header, packet)
 	} else {
-		forwardPacket(&header, packet)
+		server.ForwardPacket(&header, packet)
 	}
 }
 
-func createSocket(addr string) *net.UDPConn {
+func (server *IPXServer) Listen(addr string) bool {
 	udp4Addr, err := net.ResolveUDPAddr("up4", addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to resolve address: ",
 			err.Error())
-		os.Exit(1)
+		return false
 	}
 
 	socket, err := net.ListenUDP("udp", udp4Addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open socket: ",
 			err.Error())
-		os.Exit(1)
+		return false
 	}
 
-	return socket
+	server.socket = socket
+	server.clients = map[string]*Client{}
+	server.clientsByIPX = map[IPXAddr]*Client{}
+	server.timeoutCheckTime = time.Now().Add(10e9)
+
+	return true
 }
 
-func checkClientTimeouts() {
+func (server *IPXServer) CheckClientTimeouts() {
 	now := time.Now()
-	for _, client := range clients {
+	for _, client := range server.clients {
 		if now.After(client.lastPacketTime.Add(CLIENT_TIMEOUT)) {
 			//fmt.Printf("%s: %s: Client timed out\n",
 			//	now, client.addr)
-			delete(clients, client.addr.String())
-			delete(clientsByIPX, client.ipxAddr)
+			delete(server.clients, client.addr.String())
+			delete(server.clientsByIPX, client.ipxAddr)
 		}
 	}
 }
 
-func main() {
-	serverSocket = createSocket(":10000")
+func (server *IPXServer) Poll() bool {
+	var buf [1500]byte
 
-	timeoutCheckTime := time.Now().Add(10e9)
+	server.socket.SetReadDeadline(server.timeoutCheckTime)
+
+	packetLen, addr, err := server.socket.ReadFromUDP(buf[0:])
+
+	if err == nil {
+		server.ProcessPacket(buf[0:packetLen], addr)
+	} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
+		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		return false
+	}
+
+	if time.Now().After(server.timeoutCheckTime) {
+		server.CheckClientTimeouts()
+		server.timeoutCheckTime = server.timeoutCheckTime.Add(10e9)
+	}
+
+	return true
+}
+
+func main() {
+	var server IPXServer
+	if !server.Listen(":10000") {
+		os.Exit(1)
+	}
 
 	for {
-		var buf [1500]byte
-
-		serverSocket.SetReadDeadline(timeoutCheckTime)
-
-		packetLen, addr, err := serverSocket.ReadFromUDP(buf[0:])
-
-		if err == nil {
-			processPacket(buf[0:packetLen], addr)
-		} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
-			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		if !server.Poll() {
 			os.Exit(1)
-		}
-
-		if time.Now().After(timeoutCheckTime) {
-			checkClientTimeouts()
-			timeoutCheckTime = timeoutCheckTime.Add(10e9)
 		}
 	}
 }
