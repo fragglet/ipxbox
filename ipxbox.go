@@ -45,38 +45,36 @@ var serverSocket *net.UDPConn
 var clients = map[string]*Client{}
 var clientsByIPX = map[IPXAddr]*Client{}
 
-func decodeIPXHeaderAddr(data []byte, addr *IPXHeaderAddr) {
+func (addr *IPXHeaderAddr) decodeIPXHeaderAddr(data []byte) {
 	copy(addr.network[0:], data[0:4])
 	copy(addr.addr[0:], data[4:10])
 	addr.socket = uint16((data[10] << 8) | data[11])
 }
 
-func decodeIPXHeader(packet []byte) *IPXHeader {
+func (header *IPXHeader) decodeIPXHeader(packet []byte) bool {
 	if len(packet) < 30 {
-		return nil
+		return false
 	}
 
-	var result IPXHeader
+	header.checksum = uint16((packet[0] << 8) | packet[1])
+	header.length = uint16((packet[2] << 8) | packet[3])
+	header.transControl = packet[4]
+	header.packetType = packet[5]
 
-	result.checksum = uint16((packet[0] << 8) | packet[1])
-	result.length = uint16((packet[2] << 8) | packet[3])
-	result.transControl = packet[4]
-	result.packetType = packet[5]
+	header.dest.decodeIPXHeaderAddr(packet[6:18])
+	header.src.decodeIPXHeaderAddr(packet[18:30])
 
-	decodeIPXHeaderAddr(packet[6:18], &result.dest)
-	decodeIPXHeaderAddr(packet[18:30], &result.src)
-
-	return &result
+	return true
 }
 
-func encodeIPXHeaderAddr(data []byte, addr *IPXHeaderAddr) {
+func (addr *IPXHeaderAddr) encodeIPXHeaderAddr(data []byte) {
 	copy(data[0:4], addr.network[0:4])
 	copy(data[4:10], addr.addr[0:])
 	data[10] = byte(addr.socket >> 8)
 	data[11] = byte(addr.socket & 0xff)
 }
 
-func encodeIPXHeader(header *IPXHeader) []byte {
+func (header *IPXHeader) encodeIPXHeader() []byte {
 	result := make([]byte, 30)
 	result[0] = byte(header.checksum >> 8)
 	result[1] = byte(header.checksum & 0xff)
@@ -85,26 +83,19 @@ func encodeIPXHeader(header *IPXHeader) []byte {
 	result[4] = header.transControl
 	result[5] = header.packetType
 
-	encodeIPXHeaderAddr(result[6:18], &header.dest)
-	encodeIPXHeaderAddr(result[18:30], &header.src)
+	header.dest.encodeIPXHeaderAddr(result[6:18])
+	header.src.encodeIPXHeaderAddr(result[18:30])
 
 	return result
 }
 
-// Having received a packet, forward it on to another client.
-func forwardPacket(header *IPXHeader, packet []byte) {
-	if client, ok := clientsByIPX[header.dest.addr]; ok {
-		serverSocket.WriteToUDP(packet, client.addr)
-	}
+func (header IPXHeader) isRegistrationPacket() bool {
+	return header.dest.socket == 2 &&
+		bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
 }
 
-// Having received a broadcast packet, forward it to all clients.
-func forwardBroadcastPacket(header *IPXHeader, packet []byte) {
-	for _, client := range clients {
-		if client.ipxAddr != header.src.addr {
-			serverSocket.WriteToUDP(packet, client.addr)
-		}
-	}
+func (header IPXHeader) isBroadcast() bool {
+	return bytes.Compare(header.dest.addr[0:], ADDR_BROADCAST) == 0
 }
 
 // Allocate a new random address that does not share an address with
@@ -112,6 +103,8 @@ func forwardBroadcastPacket(header *IPXHeader, packet []byte) {
 func newAddress() IPXAddr {
 	var result IPXAddr
 
+	// Repeatedly generate a new IPX address until we generate
+	// one that is not already in use.
 	for {
 		for i := 0; i < len(result); i++ {
 			result[i] = byte(rand.Intn(255))
@@ -144,40 +137,47 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 	}
 
 	// Send a reply back to the client
-	packet := new(IPXHeader)
-	packet.checksum = 0xffff
-	packet.length = 30
-	packet.transControl = 0
+	reply := new(IPXHeader)
+	reply.checksum = 0xffff
+	reply.length = 30
+	reply.transControl = 0
 
-	copy(packet.dest.network[0:], []byte{0, 0, 0, 0})
-	copy(packet.dest.addr[0:], client.ipxAddr[0:])
-	packet.dest.socket = 2
+	copy(reply.dest.network[0:], []byte{0, 0, 0, 0})
+	copy(reply.dest.addr[0:], client.ipxAddr[0:])
+	reply.dest.socket = 2
 
-	copy(packet.src.network[0:], []byte{0, 0, 0, 1})
-	copy(packet.src.addr[0:], ADDR_BROADCAST[0:])
-	packet.src.socket = 2
+	copy(reply.src.network[0:], []byte{0, 0, 0, 1})
+	copy(reply.src.addr[0:], ADDR_BROADCAST[0:])
+	reply.src.socket = 2
 
-	serverSocket.WriteToUDP(encodeIPXHeader(packet), client.addr)
+	serverSocket.WriteToUDP(reply.encodeIPXHeader(), client.addr)
 }
 
-func isRegistrationPacket(header *IPXHeader) bool {
-	return header.dest.socket == 2 &&
-		bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
+// Having received a packet, forward it on to another client.
+func forwardPacket(header *IPXHeader, packet []byte) {
+	if client, ok := clientsByIPX[header.dest.addr]; ok {
+		serverSocket.WriteToUDP(packet, client.addr)
+	}
 }
 
-func isBroadcast(header *IPXHeader) bool {
-	return bytes.Compare(header.dest.addr[0:], ADDR_BROADCAST) == 0
+// Having received a broadcast packet, forward it to all clients.
+func forwardBroadcastPacket(header *IPXHeader, packet []byte) {
+	for _, client := range clients {
+		if client.ipxAddr != header.src.addr {
+			serverSocket.WriteToUDP(packet, client.addr)
+		}
+	}
 }
 
 // Process a received UDP packet.
 func processPacket(packet []byte, addr *net.UDPAddr) {
-	header := decodeIPXHeader(packet)
-	if header == nil {
+	var header IPXHeader
+	if !header.decodeIPXHeader(packet) {
 		return
 	}
 
-	if isRegistrationPacket(header) {
-		newClient(header, addr)
+	if header.isRegistrationPacket() {
+		newClient(&header, addr)
 		return
 	}
 
@@ -193,10 +193,10 @@ func processPacket(packet []byte, addr *net.UDPAddr) {
 
 	srcClient.lastPacketTime = time.Now()
 
-	if isBroadcast(header) {
-		forwardBroadcastPacket(header, packet)
+	if header.isBroadcast() {
+		forwardBroadcastPacket(&header, packet)
 	} else {
-		forwardPacket(header, packet)
+		forwardPacket(&header, packet)
 	}
 }
 
