@@ -10,13 +10,15 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"time"
 )
 
 type IPXAddr [6]byte
 
 type Client struct {
-	addr    *net.UDPAddr
-	ipxAddr IPXAddr
+	addr           *net.UDPAddr
+	ipxAddr        IPXAddr
+	lastPacketTime time.Time
 }
 
 type IPXHeaderAddr struct {
@@ -32,6 +34,9 @@ type IPXHeader struct {
 	packetType   byte
 	dest, src    IPXHeaderAddr
 }
+
+// Clients time out after 10 minutes of inactivity.
+const CLIENT_TIMEOUT = 10 * 60 * 1e9
 
 var ADDR_NULL = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 var ADDR_BROADCAST = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -126,9 +131,13 @@ func newClient(header *IPXHeader, addr *net.UDPAddr) {
 	client, ok := clients[addrStr]
 
 	if !ok {
+		now := time.Now()
+		//fmt.Printf("%s: %s: New client\n", now, addr)
+
 		client = new(Client)
 		client.addr = addr
 		client.ipxAddr = newAddress()
+		client.lastPacketTime = now
 
 		clients[addrStr] = client
 		clientsByIPX[client.ipxAddr] = client
@@ -182,6 +191,8 @@ func processPacket(packet []byte, addr *net.UDPAddr) {
 		return
 	}
 
+	srcClient.lastPacketTime = time.Now()
+
 	if isBroadcast(header) {
 		forwardBroadcastPacket(header, packet)
 	} else {
@@ -207,18 +218,40 @@ func createSocket(addr string) *net.UDPConn {
 	return socket
 }
 
+func checkClientTimeouts() {
+	now := time.Now()
+	for _, client := range clients {
+		if now.After(client.lastPacketTime.Add(CLIENT_TIMEOUT)) {
+			//fmt.Printf("%s: %s: Client timed out\n",
+			//	now, client.addr)
+			delete(clients, client.addr.String())
+			delete(clientsByIPX, client.ipxAddr)
+		}
+	}
+}
+
 func main() {
 	serverSocket = createSocket(":10000")
+
+	timeoutCheckTime := time.Now().Add(10e9)
 
 	for {
 		var buf [1500]byte
 
+		serverSocket.SetReadDeadline(timeoutCheckTime)
+
 		packetLen, addr, err := serverSocket.ReadFromUDP(buf[0:])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, err.Error())
+
+		if err == nil {
+			processPacket(buf[0:packetLen], addr)
+		} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
+			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 			os.Exit(1)
 		}
 
-		processPacket(buf[0:packetLen], addr)
+		if time.Now().After(timeoutCheckTime) {
+			checkClientTimeouts()
+			timeoutCheckTime = timeoutCheckTime.Add(10e9)
+		}
 	}
 }
