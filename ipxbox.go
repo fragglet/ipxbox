@@ -264,8 +264,17 @@ func (server *IPXServer) SendPing(client *Client) {
 	server.socket.WriteToUDP(header.Encode(), client.addr)
 }
 
-func (server *IPXServer) CheckClientTimeouts() {
+// CheckClientTimeouts checks all clients that are connected to the server and
+// handles idle clients to which we have no sent data or from which we have not
+// received data recently. This function should be called regularly; it returns
+// the time that it should next be invoked.
+func (server *IPXServer) CheckClientTimeouts() time.Time {
 	now := time.Now()
+
+	// At absolute max we should check again in 10 seconds, as a new client
+	// might connect in the mean time.
+	nextCheckTime := now.Add(10 * time.Second)
+
 	for _, client := range server.clients {
 		// Nothing sent in a while? Send a keepalive.
 		// This is important because some types of game use a
@@ -274,22 +283,35 @@ func (server *IPXServer) CheckClientTimeouts() {
 		// An example is Warcraft 2. If there is no activity between
 		// the client and server in a long time, some NAT gateways or
 		// firewalls can drop the association.
-		if now.After(client.lastSendTime.Add(CLIENT_KEEPALIVE)) {
+		keepaliveTime := client.lastSendTime.Add(CLIENT_KEEPALIVE)
+		if now.After(keepaliveTime) {
 			// We send a keepalive in the form of a ping packet
 			// that the client should respond to, thus keeping us
 			// from timing out the client from our own table if it
 			// really is still there.
 			server.SendPing(client)
+			keepaliveTime = client.lastSendTime.Add(
+				CLIENT_KEEPALIVE)
 		}
 
 		// Nothing received in a long time? Time out the connection.
-		if now.After(client.lastReceiveTime.Add(CLIENT_TIMEOUT)) {
+		timeoutTime := client.lastReceiveTime.Add(CLIENT_TIMEOUT)
+		if now.After(timeoutTime) {
 			//fmt.Printf("%s: %s: Client timed out\n",
 			//	now, client.addr)
 			delete(server.clients, client.addr.String())
 			delete(server.clientsByIPX, client.ipxAddr)
 		}
+
+		if keepaliveTime.Before(nextCheckTime) {
+			nextCheckTime = keepaliveTime
+		}
+		if timeoutTime.Before(nextCheckTime) {
+			nextCheckTime = timeoutTime
+		}
 	}
+
+	return nextCheckTime
 }
 
 func (server *IPXServer) Poll() bool {
@@ -306,9 +328,10 @@ func (server *IPXServer) Poll() bool {
 		return false
 	}
 
+	// We must regularly call CheckClientTimeouts(); when we do, update
+	// server.timeoutCheckTime with the next time it should be invoked.
 	if time.Now().After(server.timeoutCheckTime) {
-		server.CheckClientTimeouts()
-		server.timeoutCheckTime = server.timeoutCheckTime.Add(10e9)
+		server.timeoutCheckTime = server.CheckClientTimeouts()
 	}
 
 	return true
