@@ -148,18 +148,21 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 	}
 
 	// Send a reply back to the client
-	reply := new(IPXHeader)
-	reply.checksum = 0xffff
-	reply.length = 30
-	reply.transControl = 0
-
-	copy(reply.dest.network[0:], []byte{0, 0, 0, 0})
-	copy(reply.dest.addr[0:], client.ipxAddr[0:])
-	reply.dest.socket = 2
-
-	copy(reply.src.network[0:], []byte{0, 0, 0, 1})
-	copy(reply.src.addr[0:], ADDR_BROADCAST[0:])
-	reply.src.socket = 2
+	reply := &IPXHeader{
+		checksum: 0xffff,
+		length: 30,
+		transControl: 0,
+		dest: IPXHeaderAddr{
+			network: [4]byte{0, 0, 0, 0},
+			addr: client.ipxAddr,
+			socket: 2,
+		},
+		src: IPXHeaderAddr{
+			network: [4]byte{0, 0, 0, 1},
+			addr: ADDR_BROADCAST,
+			socket: 2,
+		},
+	}
 
 	client.lastSendTime = time.Now()
 	server.socket.WriteToUDP(reply.Encode(), client.addr)
