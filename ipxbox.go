@@ -242,15 +242,13 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 func (server *IPXServer) Listen(addr string) bool {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to resolve address: ",
-			err.Error())
+		fmt.Fprintf(os.Stderr, "Failed to resolve address: %v\n", err)
 		return false
 	}
 
 	socket, err := net.ListenUDP("udp", udp4Addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open socket: ",
-			err.Error())
+		fmt.Fprintf(os.Stderr, "Failed to open socket: %v\n", err)
 		return false
 	}
 
