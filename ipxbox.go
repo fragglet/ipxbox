@@ -16,9 +16,10 @@ import (
 type IPXAddr [6]byte
 
 type Client struct {
-	addr           *net.UDPAddr
-	ipxAddr        IPXAddr
-	lastPacketTime time.Time
+	addr            *net.UDPAddr
+	ipxAddr         IPXAddr
+	lastReceiveTime time.Time
+	lastSendTime    time.Time
 }
 
 type IPXHeaderAddr struct {
@@ -43,10 +44,17 @@ type IPXServer struct {
 }
 
 // Clients time out after 10 minutes of inactivity.
-const CLIENT_TIMEOUT = 10 * 60 * 1e9
+const CLIENT_TIMEOUT = 10 * 60 * time.Second
 
-var ADDR_NULL = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-var ADDR_BROADCAST = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+// We always send at least one packet every few seconds to keep the UDP
+// connection open. Some NAT networks and firewalls can be very aggressive
+// about closing off the ability for clients to receive packets on particular
+// ports if nothing is received for a while.
+const CLIENT_KEEPALIVE = 5 * time.Second
+
+var ADDR_NULL = [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+var ADDR_BROADCAST = [6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+var ADDR_PINGREPLY = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
 
 func (addr *IPXHeaderAddr) Decode(data []byte) {
 	copy(addr.network[0:], data[0:4])
@@ -94,11 +102,11 @@ func (header *IPXHeader) Encode() []byte {
 
 func (header IPXHeader) IsRegistrationPacket() bool {
 	return header.dest.socket == 2 &&
-		bytes.Compare(header.dest.addr[0:], ADDR_NULL) == 0
+		bytes.Compare(header.dest.addr[:], ADDR_NULL[:]) == 0
 }
 
 func (header IPXHeader) IsBroadcast() bool {
-	return bytes.Compare(header.dest.addr[0:], ADDR_BROADCAST) == 0
+	return bytes.Compare(header.dest.addr[:], ADDR_BROADCAST[:]) == 0
 }
 
 // Allocate a new random address that does not share an address with
@@ -133,7 +141,7 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 		client = new(Client)
 		client.addr = addr
 		client.ipxAddr = server.NewAddress()
-		client.lastPacketTime = now
+		client.lastReceiveTime = now
 
 		server.clients[addrStr] = client
 		server.clientsByIPX[client.ipxAddr] = client
@@ -153,12 +161,14 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 	copy(reply.src.addr[0:], ADDR_BROADCAST[0:])
 	reply.src.socket = 2
 
+	client.lastSendTime = time.Now()
 	server.socket.WriteToUDP(reply.Encode(), client.addr)
 }
 
 // Having received a packet, forward it on to another client.
 func (server *IPXServer) ForwardPacket(header *IPXHeader, packet []byte) {
 	if client, ok := server.clientsByIPX[header.dest.addr]; ok {
+		client.lastSendTime = time.Now()
 		server.socket.WriteToUDP(packet, client.addr)
 	}
 }
@@ -169,6 +179,7 @@ func (server *IPXServer) ForwardBroadcastPacket(header *IPXHeader,
 
 	for _, client := range server.clients {
 		if client.ipxAddr != header.src.addr {
+			client.lastSendTime = time.Now()
 			server.socket.WriteToUDP(packet, client.addr)
 		}
 	}
@@ -196,7 +207,7 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		return
 	}
 
-	srcClient.lastPacketTime = time.Now()
+	srcClient.lastReceiveTime = time.Now()
 
 	if header.IsBroadcast() {
 		server.ForwardBroadcastPacket(&header, packet)
@@ -206,7 +217,7 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 }
 
 func (server *IPXServer) Listen(addr string) bool {
-	udp4Addr, err := net.ResolveUDPAddr("up4", addr)
+	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to resolve address: ",
 			err.Error())
@@ -228,10 +239,48 @@ func (server *IPXServer) Listen(addr string) bool {
 	return true
 }
 
+// SendPing transmits a ping packet to the given client. The DOSbox IPX client
+// code recognizes broadcast packets sent to socket=2 and will send a reply to
+// the source address that we provide.
+func (server *IPXServer) SendPing(client *Client) {
+	header := &IPXHeader{
+		dest: IPXHeaderAddr{
+			addr: ADDR_BROADCAST,
+			socket: 2,
+		},
+		// We "send" the pings from an imaginary "ping reply" address
+		// because if we used ADDR_NULL the reply would be
+		// indistinguishable from a registration packet.
+		src: IPXHeaderAddr{
+			addr: ADDR_PINGREPLY,
+			socket: 0,
+		},
+	}
+
+	client.lastSendTime = time.Now()
+	server.socket.WriteToUDP(header.Encode(), client.addr)
+}
+
 func (server *IPXServer) CheckClientTimeouts() {
 	now := time.Now()
 	for _, client := range server.clients {
-		if now.After(client.lastPacketTime.Add(CLIENT_TIMEOUT)) {
+		// Nothing sent in a while? Send a keepalive.
+		// This is important because some types of game use a
+		// client/server type arrangement where the server does not
+		// broadcast anything but listens for broadcasts from clients.
+		// An example is Warcraft 2. If there is no activity between
+		// the client and server in a long time, some NAT gateways or
+		// firewalls can drop the association.
+		if now.After(client.lastSendTime.Add(CLIENT_KEEPALIVE)) {
+			// We send a keepalive in the form of a ping packet
+			// that the client should respond to, thus keeping us
+			// from timing out the client from our own table if it
+			// really is still there.
+			server.SendPing(client)
+		}
+
+		// Nothing received in a long time? Time out the connection.
+		if now.After(client.lastReceiveTime.Add(CLIENT_TIMEOUT)) {
 			//fmt.Printf("%s: %s: Client timed out\n",
 			//	now, client.addr)
 			delete(server.clients, client.addr.String())
