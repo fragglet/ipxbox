@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"net"
@@ -112,14 +111,13 @@ func (header *IPXHeader) Encode() []byte {
 // IsRegistrationPacket returns true if the fields in the given header
 // indicate that it is a registration ("connect to server") packet.
 func (header IPXHeader) IsRegistrationPacket() bool {
-	return header.dest.socket == 2 &&
-		bytes.Compare(header.dest.addr[:], ADDR_NULL[:]) == 0
+	return header.dest.socket == 2 && header.dest.addr == ADDR_NULL
 }
 
 // IsBroadcast returns true if the fields in the given header indicate that
 // it is a broadcast packet that should be forwarded to all clients.
 func (header IPXHeader) IsBroadcast() bool {
-	return bytes.Compare(header.dest.addr[:], ADDR_BROADCAST[:]) == 0
+	return header.dest.addr == ADDR_BROADCAST
 }
 
 // NewAddress allocates a new random address that does not share an
@@ -230,7 +228,7 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	// Clients can only send from their own address.
-	if bytes.Compare(header.src.addr[0:], srcClient.ipxAddr[0:]) != 0 {
+	if header.src.addr != srcClient.ipxAddr {
 		return
 	}
 
