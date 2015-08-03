@@ -157,8 +157,8 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 		//fmt.Printf("%s: %s: New client\n", now, addr)
 
 		client = &Client{
-			addr: addr,
-			ipxAddr: server.NewAddress(),
+			addr:            addr,
+			ipxAddr:         server.NewAddress(),
 			lastReceiveTime: time.Now(),
 		}
 
@@ -168,18 +168,18 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 
 	// Send a reply back to the client
 	reply := &IPXHeader{
-		checksum: 0xffff,
-		length: 30,
+		checksum:     0xffff,
+		length:       30,
 		transControl: 0,
 		dest: IPXHeaderAddr{
 			network: [4]byte{0, 0, 0, 0},
-			addr: client.ipxAddr,
-			socket: 2,
+			addr:    client.ipxAddr,
+			socket:  2,
 		},
 		src: IPXHeaderAddr{
 			network: [4]byte{0, 0, 0, 1},
-			addr: ADDR_BROADCAST,
-			socket: 2,
+			addr:    ADDR_BROADCAST,
+			socket:  2,
 		},
 	}
 
@@ -272,14 +272,14 @@ func (server *IPXServer) Listen(addr string) bool {
 func (server *IPXServer) SendPing(client *Client) {
 	header := &IPXHeader{
 		dest: IPXHeaderAddr{
-			addr: ADDR_BROADCAST,
+			addr:   ADDR_BROADCAST,
 			socket: 2,
 		},
 		// We "send" the pings from an imaginary "ping reply" address
 		// because if we used ADDR_NULL the reply would be
 		// indistinguishable from a registration packet.
 		src: IPXHeaderAddr{
-			addr: ADDR_PINGREPLY,
+			addr:   ADDR_PINGREPLY,
 			socket: 0,
 		},
 	}
