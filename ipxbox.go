@@ -134,6 +134,12 @@ func (server *IPXServer) NewAddress() IPXAddr {
 			result[i] = byte(rand.Intn(255))
 		}
 
+		// Never assign one of the special addresses.
+		if result == ADDR_NULL || result == ADDR_BROADCAST ||
+			result == ADDR_PINGREPLY {
+			continue
+		}
+
 		if _, ok := server.clientsByIPX[result]; !ok {
 			break
 		}
