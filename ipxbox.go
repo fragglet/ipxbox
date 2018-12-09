@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	enableTap   = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
-	dumpPackets = flag.Bool("dump_packets", false, "Dump packets to stdout.")
-	port        = flag.Int("port", 10000, "UDP port to listen on.")
+	enableTap     = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
+	dumpPackets   = flag.Bool("dump_packets", false, "Dump packets to stdout.")
+	port          = flag.Int("port", 10000, "UDP port to listen on.")
+	clientTimeout = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
 )
 
 func printPackets(s *server.Server) {
@@ -40,10 +41,15 @@ func printPackets(s *server.Server) {
 
 func main() {
 	flag.Parse()
-	s, err := server.New(fmt.Sprintf(":%d", *port), server.DefaultConfig)
+
+	var cfg server.Config
+	cfg = *server.DefaultConfig
+	cfg.ClientTimeout = *clientTimeout
+	s, err := server.New(fmt.Sprintf(":%d", *port), &cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	switch {
 	case *enableTap:
 		p, err := phys.New(water.Config{})
