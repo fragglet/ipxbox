@@ -2,8 +2,10 @@
 package server
 
 import (
+	"io"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -30,14 +32,21 @@ type client struct {
 	lastSendTime    time.Time
 }
 
+type Tap struct {
+	s       *Server
+	packets chan []byte
+}
+
 // Server is the top-level struct representing an IPX server that listens
 // on a UDP port.
 type Server struct {
+	mu               sync.Mutex
 	config           *Config
 	socket           *net.UDPConn
 	clients          map[string]*client
 	clientsByIPX     map[ipx.Addr]*client
 	timeoutCheckTime time.Time
+	tap              *Tap
 }
 
 var (
@@ -48,6 +57,8 @@ var (
 
 	// Server-initiated pings come from this address.
 	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
+
+	_ = (io.ReadCloser)(&Tap{})
 )
 
 // newAddress allocates a new random address that does not share an
@@ -152,12 +163,12 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 		return
 	}
 
+	// Find which client sent it; it must be a registered client sending
+	// from their own IPX address.
 	srcClient, ok := s.clients[addr.String()]
 	if !ok {
 		return
 	}
-
-	// Clients can only send from their own address.
 	if header.Src.Addr != srcClient.ipxAddr {
 		return
 	}
@@ -168,6 +179,9 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 		s.forwardBroadcastPacket(&header, packet)
 	} else {
 		s.forwardPacket(&header, packet)
+	}
+	if s.tap != nil {
+		s.tap.packets <- packet
 	}
 }
 
@@ -269,8 +283,12 @@ func (s *Server) poll() error {
 	var buf [1500]byte
 
 	s.socket.SetReadDeadline(s.timeoutCheckTime)
-
 	packetLen, addr, err := s.socket.ReadFromUDP(buf[0:])
+
+	// Packet processing may affect server state, so we acquire the lock
+	// while processing. This is probably less efficient than it could be.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err == nil {
 		s.processPacket(buf[0:packetLen], addr)
@@ -301,3 +319,42 @@ func (s *Server) Close() error {
 	return s.socket.Close()
 }
 
+// Tap returns a tap object that can be used to inspect packets being received
+// by the server. Only one tap can be created on a server at a time. After a
+// tap is created, the Read() method must be continually called or the server
+// will stall.
+func (s *Server) Tap() *Tap {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tap == nil {
+		s.tap = &Tap{
+			s:       s,
+			packets: make(chan []byte),
+		}
+	}
+	return s.tap
+}
+
+// Read reads another packet from the server into the given buffer. If the
+// buffer is too small the packet is truncated.
+func (t *Tap) Read(p []byte) (int, error) {
+	packet, ok := <-t.packets
+	if !ok {
+		return 0, io.EOF
+	}
+	cnt := len(packet)
+	if len(p) < cnt {
+		cnt = len(p)
+	}
+	copy(p[0:cnt], packet[0:cnt])
+	return cnt, nil
+}
+
+// Close shuts down the server tap and stops receiving packets.
+func (t *Tap) Close() error {
+	t.s.mu.Lock()
+	defer t.s.mu.Unlock()
+	t.s.tap = nil
+	close(t.packets)
+	return nil
+}
