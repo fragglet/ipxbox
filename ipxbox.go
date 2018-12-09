@@ -14,6 +14,19 @@ import (
 	"github.com/fragglet/ipxbox/ipx"
 )
 
+// Config contains configuration parameters for an IPX server.
+type Config struct {
+	// Clients time out if nothing is received for this amount of time.
+	ClientTimeout time.Duration
+
+	// Always send at least one packet every few seconds to keep the
+	// UDP connection open. Some NAT networks and firewalls can be very
+	// aggressive about closing off the ability for clients to receive
+	// packets on particular ports if nothing is received for a while.
+	// This controls the time for keepalives.
+	KeepaliveTime time.Duration
+}
+
 // Client represents a client that is connected to an IPX server.
 type Client struct {
 	addr            *net.UDPAddr
@@ -25,22 +38,21 @@ type Client struct {
 // IPXServer is the top-level struct representing an IPX server that listens
 // on a UDP port.
 type IPXServer struct {
+	config           *Config
 	socket           *net.UDPConn
 	clients          map[string]*Client
 	clientsByIPX     map[ipx.Addr]*Client
 	timeoutCheckTime time.Time
 }
 
-// Clients time out after 10 minutes of inactivity.
-const CLIENT_TIMEOUT = 10 * 60 * time.Second
+var (
+	DefaultConfig = &Config{
+		ClientTimeout: 10 * time.Minute,
+		KeepaliveTime: 5 * time.Second,
+	}
 
-// We always send at least one packet every few seconds to keep the UDP
-// connection open. Some NAT networks and firewalls can be very aggressive
-// about closing off the ability for clients to receive packets on particular
-// ports if nothing is received for a while.
-const CLIENT_KEEPALIVE = 5 * time.Second
-
-var ADDR_PINGREPLY = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
+	ADDR_PINGREPLY = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
+)
 
 // NewAddress allocates a new random address that does not share an
 // address with an existing client.
@@ -233,19 +245,18 @@ func (server *IPXServer) CheckClientTimeouts() time.Time {
 		// An example is Warcraft 2. If there is no activity between
 		// the client and server in a long time, some NAT gateways or
 		// firewalls can drop the association.
-		keepaliveTime := client.lastSendTime.Add(CLIENT_KEEPALIVE)
+		keepaliveTime := client.lastSendTime.Add(server.config.KeepaliveTime)
 		if now.After(keepaliveTime) {
 			// We send a keepalive in the form of a ping packet
 			// that the client should respond to, thus keeping us
 			// from timing out the client from our own table if it
 			// really is still there.
 			server.SendPing(client)
-			keepaliveTime = client.lastSendTime.Add(
-				CLIENT_KEEPALIVE)
+			keepaliveTime = client.lastSendTime.Add(server.config.KeepaliveTime)
 		}
 
 		// Nothing received in a long time? Time out the connection.
-		timeoutTime := client.lastReceiveTime.Add(CLIENT_TIMEOUT)
+		timeoutTime := client.lastReceiveTime.Add(server.config.ClientTimeout)
 		if now.After(timeoutTime) {
 			//fmt.Printf("%s: %s: Client timed out\n",
 			//	now, client.addr)
@@ -290,7 +301,9 @@ func (server *IPXServer) Poll() bool {
 }
 
 func main() {
-	var server IPXServer
+	server := &IPXServer{
+		config: DefaultConfig,
+	}
 	if !server.Listen(":10000") {
 		os.Exit(1)
 	}
