@@ -2,6 +2,7 @@
 package server
 
 import (
+	"errors"
 	"io"
 	"math/rand"
 	"net"
@@ -50,6 +51,10 @@ type Server struct {
 }
 
 var (
+	// UnknownClientError is returned by Server.Write() if the destination
+	// MAC address is not associated with any known client.
+	UnknownClientError = errors.New("unknown destination address")
+
 	DefaultConfig = &Config{
 		ClientTimeout: 10 * time.Minute,
 		KeepaliveTime: 5 * time.Second,
@@ -59,6 +64,7 @@ var (
 	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
 
 	_ = (io.ReadCloser)(&Tap{})
+	_ = (io.WriteCloser)(&Server{})
 )
 
 // newAddress allocates a new random address that does not share an
@@ -128,26 +134,36 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	}
 }
 
-// forwardPacket takes a packet received from a client and forwards it on
-// to another client.
-func (s *Server) forwardPacket(header *ipx.Header, packet []byte) {
-	// We can only forward it on if the destination IPX address corresponds
-	// to a client that we know about:
-	if c, ok := s.clientsByIPX[header.Dest.Addr]; ok {
-		c.lastSendTime = time.Now()
-		s.socket.WriteToUDP(packet, c.addr)
-	}
-}
-
 // forwardBroadcastPacket takes a broadcast packet received from a client and
 // forwards it to all other clients.
-func (s *Server) forwardBroadcastPacket(header *ipx.Header, packet []byte) {
+func (s *Server) forwardBroadcastPacket(header *ipx.Header, packet []byte) error {
+	var err error
 	for _, c := range s.clients {
-		if c.ipxAddr != header.Src.Addr {
-			c.lastSendTime = time.Now()
-			s.socket.WriteToUDP(packet, c.addr)
+		if c.ipxAddr == header.Src.Addr {
+			continue
 		}
+		c.lastSendTime = time.Now()
+		_, err = s.socket.WriteToUDP(packet, c.addr)
 	}
+	return err
+}
+
+// forwardPacket takes a packet received from a client and forwards it on
+// to another client.
+func (s *Server) forwardPacket(header *ipx.Header, packet []byte) error {
+	if header.IsBroadcast() {
+		return s.forwardBroadcastPacket(header, packet)
+	}
+
+	// We can only forward it on if the destination IPX address corresponds
+	// to a client that we know about:
+	c, ok := s.clientsByIPX[header.Dest.Addr]
+	if !ok {
+		return UnknownClientError
+	}
+	c.lastSendTime = time.Now()
+	_, err := s.socket.WriteToUDP(packet, c.addr)
+	return err
 }
 
 // processPacket decodes and processes a received UDP packet, sending responses
@@ -174,12 +190,7 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	srcClient.lastReceiveTime = time.Now()
-
-	if header.IsBroadcast() {
-		s.forwardBroadcastPacket(&header, packet)
-	} else {
-		s.forwardPacket(&header, packet)
-	}
+	s.forwardPacket(&header, packet)
 	if s.tap != nil {
 		s.tap.packets <- packet
 	}
@@ -312,6 +323,24 @@ func (s *Server) Run() {
 			return
 		}
 	}
+}
+
+// Write writes an IPX packet, forwarding to the appropriate client. An error
+// of type UnknownClientError is returned if there is no client associated
+// with the destination address.
+func (s *Server) Write(packet []byte) (int, error) {
+	var header ipx.Header
+	if err := header.UnmarshalBinary(packet); err != nil {
+		return 0, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.forwardPacket(&header, packet); err != nil {
+		return 0, err
+	}
+	return len(packet), nil
 }
 
 // Close closes the socket associated with the server to shut it down.
