@@ -51,7 +51,7 @@ var (
 		KeepaliveTime: 5 * time.Second,
 	}
 
-	ADDR_PINGREPLY = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
+	AddrPingReply = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
 )
 
 // NewAddress allocates a new random address that does not share an
@@ -67,8 +67,7 @@ func (server *IPXServer) NewAddress() ipx.Addr {
 		}
 
 		// Never assign one of the special addresses.
-		if result == ipx.AddrNull || result == ipx.AddrBroadcast ||
-			result == ADDR_PINGREPLY {
+		if result == ipx.AddrNull || result == ipx.AddrBroadcast || result == AddrPingReply {
 			continue
 		}
 
@@ -214,7 +213,7 @@ func (server *IPXServer) SendPing(client *Client) {
 		// because if we used ipx.AddrNull the reply would be
 		// indistinguishable from a registration packet.
 		Src: ipx.HeaderAddr{
-			Addr:   ADDR_PINGREPLY,
+			Addr:   AddrPingReply,
 			Socket: 0,
 		},
 	}
