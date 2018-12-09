@@ -10,28 +10,14 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/fragglet/ipxbox/ipx"
 )
-
-type IPXAddr [6]byte
-
-type IPXHeaderAddr struct {
-	network [4]byte
-	addr    IPXAddr
-	socket  uint16
-}
-
-type IPXHeader struct {
-	checksum     uint16
-	length       uint16
-	transControl byte
-	packetType   byte
-	dest, src    IPXHeaderAddr
-}
 
 // Client represents a client that is connected to an IPX server.
 type Client struct {
 	addr            *net.UDPAddr
-	ipxAddr         IPXAddr
+	ipxAddr         ipx.Addr
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
 }
@@ -41,7 +27,7 @@ type Client struct {
 type IPXServer struct {
 	socket           *net.UDPConn
 	clients          map[string]*Client
-	clientsByIPX     map[IPXAddr]*Client
+	clientsByIPX     map[ipx.Addr]*Client
 	timeoutCheckTime time.Time
 }
 
@@ -54,76 +40,12 @@ const CLIENT_TIMEOUT = 10 * 60 * time.Second
 // ports if nothing is received for a while.
 const CLIENT_KEEPALIVE = 5 * time.Second
 
-var ADDR_NULL = [6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-var ADDR_BROADCAST = [6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 var ADDR_PINGREPLY = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
-
-// Decode reads a raw IPX header address, populating 'addr'.
-func (addr *IPXHeaderAddr) Decode(data []byte) {
-	copy(addr.network[0:], data[0:4])
-	copy(addr.addr[0:], data[4:10])
-	addr.socket = uint16((data[10] << 8) | data[11])
-}
-
-// Decode reads a raw IPX header, populating 'header'.
-func (header *IPXHeader) Decode(packet []byte) bool {
-	if len(packet) < 30 {
-		return false
-	}
-
-	header.checksum = uint16((packet[0] << 8) | packet[1])
-	header.length = uint16((packet[2] << 8) | packet[3])
-	header.transControl = packet[4]
-	header.packetType = packet[5]
-
-	header.dest.Decode(packet[6:18])
-	header.src.Decode(packet[18:30])
-
-	return true
-}
-
-// Encode translates the information from the given address structure into
-// binary representation in the form of a byte sequence.
-func (addr *IPXHeaderAddr) Encode(data []byte) {
-	copy(data[0:4], addr.network[0:4])
-	copy(data[4:10], addr.addr[0:])
-	data[10] = byte(addr.socket >> 8)
-	data[11] = byte(addr.socket & 0xff)
-}
-
-// Encode translates the information from the given header structure into
-// binary representation in the form of a byte sequence.
-func (header *IPXHeader) Encode() []byte {
-	result := make([]byte, 30)
-	result[0] = byte(header.checksum >> 8)
-	result[1] = byte(header.checksum & 0xff)
-	result[2] = byte(header.length >> 8)
-	result[3] = byte(header.length & 0xff)
-	result[4] = header.transControl
-	result[5] = header.packetType
-
-	header.dest.Encode(result[6:18])
-	header.src.Encode(result[18:30])
-
-	return result
-}
-
-// IsRegistrationPacket returns true if the fields in the given header
-// indicate that it is a registration ("connect to server") packet.
-func (header IPXHeader) IsRegistrationPacket() bool {
-	return header.dest.socket == 2 && header.dest.addr == ADDR_NULL
-}
-
-// IsBroadcast returns true if the fields in the given header indicate that
-// it is a broadcast packet that should be forwarded to all clients.
-func (header IPXHeader) IsBroadcast() bool {
-	return header.dest.addr == ADDR_BROADCAST
-}
 
 // NewAddress allocates a new random address that does not share an
 // address with an existing client.
-func (server *IPXServer) NewAddress() IPXAddr {
-	var result IPXAddr
+func (server *IPXServer) NewAddress() ipx.Addr {
+	var result ipx.Addr
 
 	// Repeatedly generate a new IPX address until we generate
 	// one that is not already in use.
@@ -133,7 +55,7 @@ func (server *IPXServer) NewAddress() IPXAddr {
 		}
 
 		// Never assign one of the special addresses.
-		if result == ADDR_NULL || result == ADDR_BROADCAST ||
+		if result == ipx.AddrNull || result == ipx.AddrBroadcast ||
 			result == ADDR_PINGREPLY {
 			continue
 		}
@@ -147,7 +69,7 @@ func (server *IPXServer) NewAddress() IPXAddr {
 }
 
 // NewClient processes a registration packet, adding a new client if necessary.
-func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
+func (server *IPXServer) NewClient(header *ipx.Header, addr *net.UDPAddr) {
 	addrStr := addr.String()
 	client, ok := server.clients[addrStr]
 
@@ -165,32 +87,35 @@ func (server *IPXServer) NewClient(header *IPXHeader, addr *net.UDPAddr) {
 	}
 
 	// Send a reply back to the client
-	reply := &IPXHeader{
-		checksum:     0xffff,
-		length:       30,
-		transControl: 0,
-		dest: IPXHeaderAddr{
-			network: [4]byte{0, 0, 0, 0},
-			addr:    client.ipxAddr,
-			socket:  2,
+	reply := &ipx.Header{
+		Checksum:     0xffff,
+		Length:       30,
+		TransControl: 0,
+		Dest: ipx.HeaderAddr{
+			Network: [4]byte{0, 0, 0, 0},
+			Addr:    client.ipxAddr,
+			Socket:  2,
 		},
-		src: IPXHeaderAddr{
-			network: [4]byte{0, 0, 0, 1},
-			addr:    ADDR_BROADCAST,
-			socket:  2,
+		Src: ipx.HeaderAddr{
+			Network: [4]byte{0, 0, 0, 1},
+			Addr:    ipx.AddrBroadcast,
+			Socket:  2,
 		},
 	}
 
 	client.lastSendTime = time.Now()
-	server.socket.WriteToUDP(reply.Encode(), client.addr)
+	encodedReply, err := reply.MarshalBinary()
+	if err == nil {
+		server.socket.WriteToUDP(encodedReply, client.addr)
+	}
 }
 
 // ForwardPacket takes a packet received from a client and forwards it on
 // to another client.
-func (server *IPXServer) ForwardPacket(header *IPXHeader, packet []byte) {
+func (server *IPXServer) ForwardPacket(header *ipx.Header, packet []byte) {
 	// We can only forward it on if the destination IPX address corresponds
 	// to a client that we know about:
-	if client, ok := server.clientsByIPX[header.dest.addr]; ok {
+	if client, ok := server.clientsByIPX[header.Dest.Addr]; ok {
 		client.lastSendTime = time.Now()
 		server.socket.WriteToUDP(packet, client.addr)
 	}
@@ -198,11 +123,11 @@ func (server *IPXServer) ForwardPacket(header *IPXHeader, packet []byte) {
 
 // ForwardBroadcastPacket takes a broadcast packet received from a client and
 // forwards it to all other clients.
-func (server *IPXServer) ForwardBroadcastPacket(header *IPXHeader,
+func (server *IPXServer) ForwardBroadcastPacket(header *ipx.Header,
 	packet []byte) {
 
 	for _, client := range server.clients {
-		if client.ipxAddr != header.src.addr {
+		if client.ipxAddr != header.Src.Addr {
 			client.lastSendTime = time.Now()
 			server.socket.WriteToUDP(packet, client.addr)
 		}
@@ -212,8 +137,8 @@ func (server *IPXServer) ForwardBroadcastPacket(header *IPXHeader,
 // ProcessPacket decodes and processes a received UDP packet, sending responses
 // and forwarding the packet on to other clients as appropriate.
 func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
-	var header IPXHeader
-	if !header.Decode(packet) {
+	var header ipx.Header
+	if err := header.UnmarshalBinary(packet); err != nil {
 		return
 	}
 
@@ -228,7 +153,7 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	// Clients can only send from their own address.
-	if header.src.addr != srcClient.ipxAddr {
+	if header.Src.Addr != srcClient.ipxAddr {
 		return
 	}
 
@@ -258,7 +183,7 @@ func (server *IPXServer) Listen(addr string) bool {
 
 	server.socket = socket
 	server.clients = map[string]*Client{}
-	server.clientsByIPX = map[IPXAddr]*Client{}
+	server.clientsByIPX = map[ipx.Addr]*Client{}
 	server.timeoutCheckTime = time.Now().Add(10e9)
 
 	return true
@@ -268,22 +193,25 @@ func (server *IPXServer) Listen(addr string) bool {
 // code recognizes broadcast packets sent to socket=2 and will send a reply to
 // the source address that we provide.
 func (server *IPXServer) SendPing(client *Client) {
-	header := &IPXHeader{
-		dest: IPXHeaderAddr{
-			addr:   ADDR_BROADCAST,
-			socket: 2,
+	header := &ipx.Header{
+		Dest: ipx.HeaderAddr{
+			Addr:   ipx.AddrBroadcast,
+			Socket: 2,
 		},
 		// We "send" the pings from an imaginary "ping reply" address
-		// because if we used ADDR_NULL the reply would be
+		// because if we used ipx.AddrNull the reply would be
 		// indistinguishable from a registration packet.
-		src: IPXHeaderAddr{
-			addr:   ADDR_PINGREPLY,
-			socket: 0,
+		Src: ipx.HeaderAddr{
+			Addr:   ADDR_PINGREPLY,
+			Socket: 0,
 		},
 	}
 
 	client.lastSendTime = time.Now()
-	server.socket.WriteToUDP(header.Encode(), client.addr)
+	encodedHeader, err := header.MarshalBinary()
+	if err == nil {
+		server.socket.WriteToUDP(encodedHeader, client.addr)
+	}
 }
 
 // CheckClientTimeouts checks all clients that are connected to the server and
