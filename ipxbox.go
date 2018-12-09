@@ -5,10 +5,9 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
 	"net"
-	"os"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -134,8 +133,7 @@ func (s *IPXServer) ForwardPacket(header *ipx.Header, packet []byte) {
 
 // ForwardBroadcastPacket takes a broadcast packet received from a client and
 // forwards it to all other clients.
-func (s *IPXServer) ForwardBroadcastPacket(header *ipx.Header,
-	packet []byte) {
+func (s *IPXServer) ForwardBroadcastPacket(header *ipx.Header, packet []byte) {
 
 	for _, client := range s.clients {
 		if client.ipxAddr != header.Src.Addr {
@@ -179,17 +177,15 @@ func (s *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 // Listen initializes an IPXServer struct, binding to the given address
 // so that we can receive packets.
-func (s *IPXServer) Listen(addr string) bool {
+func (s *IPXServer) Listen(addr string) error {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to resolve address: %v\n", err)
-		return false
+		return err
 	}
 
 	socket, err := net.ListenUDP("udp", udp4Addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open socket: %v\n", err)
-		return false
+		return err
 	}
 
 	s.socket = socket
@@ -197,7 +193,7 @@ func (s *IPXServer) Listen(addr string) bool {
 	s.clientsByIPX = map[ipx.Addr]*Client{}
 	s.timeoutCheckTime = time.Now().Add(10e9)
 
-	return true
+	return nil
 }
 
 // SendPing transmits a ping packet to the given client. The DOSbox IPX client
@@ -276,7 +272,7 @@ func (s *IPXServer) CheckClientTimeouts() time.Time {
 
 // Poll listens for new packets, blocking until one is received, or until
 // a timeout is reached.
-func (s *IPXServer) Poll() bool {
+func (s *IPXServer) Poll() error {
 	var buf [1500]byte
 
 	s.socket.SetReadDeadline(s.timeoutCheckTime)
@@ -286,8 +282,7 @@ func (s *IPXServer) Poll() bool {
 	if err == nil {
 		s.ProcessPacket(buf[0:packetLen], addr)
 	} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
-		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
-		return false
+		return err
 	}
 
 	// We must regularly call CheckClientTimeouts(); when we do, update
@@ -296,20 +291,20 @@ func (s *IPXServer) Poll() bool {
 		s.timeoutCheckTime = s.CheckClientTimeouts()
 	}
 
-	return true
+	return nil
 }
 
 func main() {
 	s := &IPXServer{
 		config: DefaultConfig,
 	}
-	if !s.Listen(":10000") {
-		os.Exit(1)
+	if err := s.Listen(":10000"); err != nil {
+		log.Fatal(err)
 	}
 
 	for {
-		if !s.Poll() {
-			os.Exit(1)
+		if err := s.Poll(); err != nil {
+			log.Fatal(err)
 		}
 	}
 }
