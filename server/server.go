@@ -80,8 +80,6 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	c, ok := s.clients[addrStr]
 
 	if !ok {
-		//fmt.Printf("%s: %s: New client\n", now, addr)
-
 		c = &client{
 			addr:            addr,
 			ipxAddr:         s.newAddress(),
@@ -130,7 +128,6 @@ func (s *Server) forwardPacket(header *ipx.Header, packet []byte) {
 // forwardBroadcastPacket takes a broadcast packet received from a client and
 // forwards it to all other clients.
 func (s *Server) forwardBroadcastPacket(header *ipx.Header, packet []byte) {
-
 	for _, c := range s.clients {
 		if c.ipxAddr != header.Src.Addr {
 			c.lastSendTime = time.Now()
@@ -171,32 +168,24 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 	}
 }
 
-// New creates a new Server.
-func New(c *Config) *Server {
-	return &Server{
-		config: c,
-	}
-}
-
-// Listen initializes a Server struct, binding to the given address
-// so that we can receive packets.
-func (s *Server) Listen(addr string) error {
+// New creates a new Server, listening on the given address.
+func New(addr string, c *Config) (*Server, error) {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	socket, err := net.ListenUDP("udp", udp4Addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	s.socket = socket
-	s.clients = map[string]*client{}
-	s.clientsByIPX = map[ipx.Addr]*client{}
-	s.timeoutCheckTime = time.Now().Add(10e9)
-
-	return nil
+	s := &Server{
+		config:           c,
+		socket:           socket,
+		clients:          map[string]*client{},
+		clientsByIPX:     map[ipx.Addr]*client{},
+		timeoutCheckTime: time.Now().Add(10e9),
+	}
+	return s, nil
 }
 
 // sendPing transmits a ping packet to the given client. The DOSbox IPX client
@@ -271,9 +260,9 @@ func (s *Server) checkClientTimeouts() time.Time {
 	return nextCheckTime
 }
 
-// Poll listens for new packets, blocking until one is received, or until
+// poll listens for new packets, blocking until one is received, or until
 // a timeout is reached.
-func (s *Server) Poll() error {
+func (s *Server) poll() error {
 	var buf [1500]byte
 
 	s.socket.SetReadDeadline(s.timeoutCheckTime)
@@ -293,5 +282,19 @@ func (s *Server) Poll() error {
 	}
 
 	return nil
+}
+
+// Run runs the server, blocking until the socket is closed or an error occurs.
+func (s *Server) Run() {
+	for {
+		if err := s.poll(); err != nil {
+			return
+		}
+	}
+}
+
+// Close closes the socket associated with the server to shut it down.
+func (s *Server) Close() error {
+	return s.socket.Close()
 }
 

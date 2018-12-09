@@ -8,14 +8,10 @@ import (
 )
 
 func main() {
-	s := server.New(server.DefaultConfig)
-	if err := s.Listen(":10000"); err != nil {
+	s, err := server.New(":10000", server.DefaultConfig)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	for {
-		if err := s.Poll(); err != nil {
-			log.Fatal(err)
-		}
-	}
+	s.Run()
 }
