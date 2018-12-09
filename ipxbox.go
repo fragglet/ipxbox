@@ -56,7 +56,7 @@ var (
 
 // NewAddress allocates a new random address that does not share an
 // address with an existing client.
-func (server *IPXServer) NewAddress() ipx.Addr {
+func (s *IPXServer) NewAddress() ipx.Addr {
 	var result ipx.Addr
 
 	// Repeatedly generate a new IPX address until we generate
@@ -71,7 +71,7 @@ func (server *IPXServer) NewAddress() ipx.Addr {
 			continue
 		}
 
-		if _, ok := server.clientsByIPX[result]; !ok {
+		if _, ok := s.clientsByIPX[result]; !ok {
 			break
 		}
 	}
@@ -80,21 +80,21 @@ func (server *IPXServer) NewAddress() ipx.Addr {
 }
 
 // NewClient processes a registration packet, adding a new client if necessary.
-func (server *IPXServer) NewClient(header *ipx.Header, addr *net.UDPAddr) {
+func (s *IPXServer) NewClient(header *ipx.Header, addr *net.UDPAddr) {
 	addrStr := addr.String()
-	client, ok := server.clients[addrStr]
+	client, ok := s.clients[addrStr]
 
 	if !ok {
 		//fmt.Printf("%s: %s: New client\n", now, addr)
 
 		client = &Client{
 			addr:            addr,
-			ipxAddr:         server.NewAddress(),
+			ipxAddr:         s.NewAddress(),
 			lastReceiveTime: time.Now(),
 		}
 
-		server.clients[addrStr] = client
-		server.clientsByIPX[client.ipxAddr] = client
+		s.clients[addrStr] = client
+		s.clientsByIPX[client.ipxAddr] = client
 	}
 
 	// Send a reply back to the client
@@ -117,48 +117,48 @@ func (server *IPXServer) NewClient(header *ipx.Header, addr *net.UDPAddr) {
 	client.lastSendTime = time.Now()
 	encodedReply, err := reply.MarshalBinary()
 	if err == nil {
-		server.socket.WriteToUDP(encodedReply, client.addr)
+		s.socket.WriteToUDP(encodedReply, client.addr)
 	}
 }
 
 // ForwardPacket takes a packet received from a client and forwards it on
 // to another client.
-func (server *IPXServer) ForwardPacket(header *ipx.Header, packet []byte) {
+func (s *IPXServer) ForwardPacket(header *ipx.Header, packet []byte) {
 	// We can only forward it on if the destination IPX address corresponds
 	// to a client that we know about:
-	if client, ok := server.clientsByIPX[header.Dest.Addr]; ok {
+	if client, ok := s.clientsByIPX[header.Dest.Addr]; ok {
 		client.lastSendTime = time.Now()
-		server.socket.WriteToUDP(packet, client.addr)
+		s.socket.WriteToUDP(packet, client.addr)
 	}
 }
 
 // ForwardBroadcastPacket takes a broadcast packet received from a client and
 // forwards it to all other clients.
-func (server *IPXServer) ForwardBroadcastPacket(header *ipx.Header,
+func (s *IPXServer) ForwardBroadcastPacket(header *ipx.Header,
 	packet []byte) {
 
-	for _, client := range server.clients {
+	for _, client := range s.clients {
 		if client.ipxAddr != header.Src.Addr {
 			client.lastSendTime = time.Now()
-			server.socket.WriteToUDP(packet, client.addr)
+			s.socket.WriteToUDP(packet, client.addr)
 		}
 	}
 }
 
 // ProcessPacket decodes and processes a received UDP packet, sending responses
 // and forwarding the packet on to other clients as appropriate.
-func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
+func (s *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	var header ipx.Header
 	if err := header.UnmarshalBinary(packet); err != nil {
 		return
 	}
 
 	if header.IsRegistrationPacket() {
-		server.NewClient(&header, addr)
+		s.NewClient(&header, addr)
 		return
 	}
 
-	srcClient, ok := server.clients[addr.String()]
+	srcClient, ok := s.clients[addr.String()]
 	if !ok {
 		return
 	}
@@ -171,15 +171,15 @@ func (server *IPXServer) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	srcClient.lastReceiveTime = time.Now()
 
 	if header.IsBroadcast() {
-		server.ForwardBroadcastPacket(&header, packet)
+		s.ForwardBroadcastPacket(&header, packet)
 	} else {
-		server.ForwardPacket(&header, packet)
+		s.ForwardPacket(&header, packet)
 	}
 }
 
 // Listen initializes an IPXServer struct, binding to the given address
 // so that we can receive packets.
-func (server *IPXServer) Listen(addr string) bool {
+func (s *IPXServer) Listen(addr string) bool {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to resolve address: %v\n", err)
@@ -192,10 +192,10 @@ func (server *IPXServer) Listen(addr string) bool {
 		return false
 	}
 
-	server.socket = socket
-	server.clients = map[string]*Client{}
-	server.clientsByIPX = map[ipx.Addr]*Client{}
-	server.timeoutCheckTime = time.Now().Add(10e9)
+	s.socket = socket
+	s.clients = map[string]*Client{}
+	s.clientsByIPX = map[ipx.Addr]*Client{}
+	s.timeoutCheckTime = time.Now().Add(10e9)
 
 	return true
 }
@@ -203,7 +203,7 @@ func (server *IPXServer) Listen(addr string) bool {
 // SendPing transmits a ping packet to the given client. The DOSbox IPX client
 // code recognizes broadcast packets sent to socket=2 and will send a reply to
 // the source address that we provide.
-func (server *IPXServer) SendPing(client *Client) {
+func (s *IPXServer) SendPing(client *Client) {
 	header := &ipx.Header{
 		Dest: ipx.HeaderAddr{
 			Addr:   ipx.AddrBroadcast,
@@ -221,7 +221,7 @@ func (server *IPXServer) SendPing(client *Client) {
 	client.lastSendTime = time.Now()
 	encodedHeader, err := header.MarshalBinary()
 	if err == nil {
-		server.socket.WriteToUDP(encodedHeader, client.addr)
+		s.socket.WriteToUDP(encodedHeader, client.addr)
 	}
 }
 
@@ -229,14 +229,14 @@ func (server *IPXServer) SendPing(client *Client) {
 // handles idle clients to which we have no sent data or from which we have not
 // received data recently. This function should be called regularly; it returns
 // the time that it should next be invoked.
-func (server *IPXServer) CheckClientTimeouts() time.Time {
+func (s *IPXServer) CheckClientTimeouts() time.Time {
 	now := time.Now()
 
 	// At absolute max we should check again in 10 seconds, as a new client
 	// might connect in the mean time.
 	nextCheckTime := now.Add(10 * time.Second)
 
-	for _, client := range server.clients {
+	for _, client := range s.clients {
 		// Nothing sent in a while? Send a keepalive.
 		// This is important because some types of game use a
 		// client/server type arrangement where the server does not
@@ -244,23 +244,23 @@ func (server *IPXServer) CheckClientTimeouts() time.Time {
 		// An example is Warcraft 2. If there is no activity between
 		// the client and server in a long time, some NAT gateways or
 		// firewalls can drop the association.
-		keepaliveTime := client.lastSendTime.Add(server.config.KeepaliveTime)
+		keepaliveTime := client.lastSendTime.Add(s.config.KeepaliveTime)
 		if now.After(keepaliveTime) {
 			// We send a keepalive in the form of a ping packet
 			// that the client should respond to, thus keeping us
 			// from timing out the client from our own table if it
 			// really is still there.
-			server.SendPing(client)
-			keepaliveTime = client.lastSendTime.Add(server.config.KeepaliveTime)
+			s.SendPing(client)
+			keepaliveTime = client.lastSendTime.Add(s.config.KeepaliveTime)
 		}
 
 		// Nothing received in a long time? Time out the connection.
-		timeoutTime := client.lastReceiveTime.Add(server.config.ClientTimeout)
+		timeoutTime := client.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
 			//fmt.Printf("%s: %s: Client timed out\n",
 			//	now, client.addr)
-			delete(server.clients, client.addr.String())
-			delete(server.clientsByIPX, client.ipxAddr)
+			delete(s.clients, client.addr.String())
+			delete(s.clientsByIPX, client.ipxAddr)
 		}
 
 		if keepaliveTime.Before(nextCheckTime) {
@@ -276,15 +276,15 @@ func (server *IPXServer) CheckClientTimeouts() time.Time {
 
 // Poll listens for new packets, blocking until one is received, or until
 // a timeout is reached.
-func (server *IPXServer) Poll() bool {
+func (s *IPXServer) Poll() bool {
 	var buf [1500]byte
 
-	server.socket.SetReadDeadline(server.timeoutCheckTime)
+	s.socket.SetReadDeadline(s.timeoutCheckTime)
 
-	packetLen, addr, err := server.socket.ReadFromUDP(buf[0:])
+	packetLen, addr, err := s.socket.ReadFromUDP(buf[0:])
 
 	if err == nil {
-		server.ProcessPacket(buf[0:packetLen], addr)
+		s.ProcessPacket(buf[0:packetLen], addr)
 	} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
 		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 		return false
@@ -292,23 +292,23 @@ func (server *IPXServer) Poll() bool {
 
 	// We must regularly call CheckClientTimeouts(); when we do, update
 	// server.timeoutCheckTime with the next time it should be invoked.
-	if time.Now().After(server.timeoutCheckTime) {
-		server.timeoutCheckTime = server.CheckClientTimeouts()
+	if time.Now().After(s.timeoutCheckTime) {
+		s.timeoutCheckTime = s.CheckClientTimeouts()
 	}
 
 	return true
 }
 
 func main() {
-	server := &IPXServer{
+	s := &IPXServer{
 		config: DefaultConfig,
 	}
-	if !server.Listen(":10000") {
+	if !s.Listen(":10000") {
 		os.Exit(1)
 	}
 
 	for {
-		if !server.Poll() {
+		if !s.Poll() {
 			os.Exit(1)
 		}
 	}
