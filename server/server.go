@@ -46,7 +46,8 @@ var (
 		KeepaliveTime: 5 * time.Second,
 	}
 
-	addrPingReply = [6]byte{0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
+	// Server-initiated pings come from this address.
+	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
 )
 
 // newAddress allocates a new random address that does not share an
@@ -54,10 +55,12 @@ var (
 func (s *Server) newAddress() ipx.Addr {
 	var result ipx.Addr
 
-	// Repeatedly generate a new IPX address until we generate
-	// one that is not already in use.
+	// Repeatedly generate a new IPX address until we generate one that
+	// is not already in use. A prefix of 02:... gives a Unicast address
+	// that is locally administered.
 	for {
-		for i := 0; i < len(result); i++ {
+		result[0] = 0x02
+		for i := 1; i < len(result); i++ {
 			result[i] = byte(rand.Intn(255))
 		}
 
