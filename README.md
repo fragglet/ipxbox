@@ -14,8 +14,16 @@ The following explains how to set up an IPX bridge server on Linux. This could
 be as simple as a Raspberry Pi that you connect to a network along with a
 retro DOS machine (Raspberry Pis are cheap and ubiquitous nowadays).
 
-First compile `ipxbox` and run with the `--enable_tap` flag (probably requires
-root privileges, hence sudo):
+First, a word of warning: the DOSBox IPX protocol is completely insecure.
+There's no encryption or authentication supported. If all you're doing is
+playing some old DOS games maybe that's fine, but be aware that it's possible
+to piggyback Windows 9x filesharing on top of IPX, so there's a possibility
+that you might be making things available to the world that you don't intend.
+If you're looking to use this for anything more serious than just games, look
+into setting up proper VPN software.
+
+Compile `ipxbox` and run with the `--enable_tap` flag (probably requires root
+privileges, hence sudo):
 
     go build ipxbox.go
     sudo ./ipxbox --port=10000 --enable_tap
