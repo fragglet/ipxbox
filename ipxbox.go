@@ -9,6 +9,7 @@ import (
 	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/server"
+	"github.com/fragglet/ipxbox/virtual"
 	"github.com/songgao/water"
 )
 
@@ -19,8 +20,8 @@ var (
 	clientTimeout = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
 )
 
-func printPackets(s *server.Server) {
-	tap := s.Tap()
+func printPackets(v *virtual.Network) {
+	tap := v.Tap()
 	defer tap.Close()
 	for {
 		buf := make([]byte, 1500)
@@ -45,20 +46,22 @@ func main() {
 	var cfg server.Config
 	cfg = *server.DefaultConfig
 	cfg.ClientTimeout = *clientTimeout
-	s, err := server.New(fmt.Sprintf(":%d", *port), &cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	switch {
-	case *enableTap:
+	v := virtual.New()
+	if *enableTap {
 		p, err := phys.New(water.Config{})
 		if err != nil {
 			log.Fatalf("failed to start tap: %v", err)
 		}
-		go bridge.Run(s.Tap(), s, p, p)
-	case *dumpPackets:
-		go printPackets(s)
+		tap := v.Tap()
+		go bridge.Run(tap, tap, p, p)
+	}
+	if *dumpPackets {
+		go printPackets(v)
+	}
+
+	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
+	if err != nil {
+		log.Fatal(err)
 	}
 	s.Run()
 }

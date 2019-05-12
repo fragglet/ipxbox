@@ -4,12 +4,12 @@ package server
 import (
 	"errors"
 	"io"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/network"
 )
 
 // Config contains configuration parameters for an IPX server.
@@ -28,26 +28,20 @@ type Config struct {
 // client represents a client that is connected to an IPX server.
 type client struct {
 	addr            *net.UDPAddr
-	ipxAddr         ipx.Addr
+	node            network.Node
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
-}
-
-type Tap struct {
-	s       *Server
-	packets chan []byte
 }
 
 // Server is the top-level struct representing an IPX server that listens
 // on a UDP port.
 type Server struct {
+	net              network.Network
 	mu               sync.Mutex
 	config           *Config
 	socket           *net.UDPConn
 	clients          map[string]*client
-	clientsByIPX     map[ipx.Addr]*client
 	timeoutCheckTime time.Time
-	tap              *Tap
 }
 
 var (
@@ -63,35 +57,45 @@ var (
 	// Server-initiated pings come from this address.
 	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
 
-	_ = (io.ReadCloser)(&Tap{})
-	_ = (io.WriteCloser)(&Server{})
+	_ = (io.Closer)(&Server{})
 )
 
-// newAddress allocates a new random address that does not share an
-// address with an existing client.
-func (s *Server) newAddress() ipx.Addr {
-	var result ipx.Addr
+// New creates a new Server, listening on the given address.
+func New(addr string, n network.Network, c *Config) (*Server, error) {
+	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
+	if err != nil {
+		return nil, err
+	}
+	socket, err := net.ListenUDP("udp", udp4Addr)
+	if err != nil {
+		return nil, err
+	}
+	s := &Server{
+		net:              n,
+		config:           c,
+		socket:           socket,
+		clients:          map[string]*client{},
+		timeoutCheckTime: time.Now().Add(10e9),
+	}
+	return s, nil
+}
 
-	// Repeatedly generate a new IPX address until we generate one that
-	// is not already in use. A prefix of 02:... gives a Unicast address
-	// that is locally administered.
+// runClient continually copies packets from the client's node and sends them
+// to the connected UDP client. The function will only return when the client's
+// network node is Close()d.
+func (s *Server) runClient(c *client) {
+	var buf [1500]byte
 	for {
-		result[0] = 0x02
-		for i := 1; i < len(result); i++ {
-			result[i] = byte(rand.Intn(255))
-		}
-
-		// Never assign one of the special addresses.
-		if result == ipx.AddrNull || result == ipx.AddrBroadcast || result == addrPingReply {
-			continue
-		}
-
-		if _, ok := s.clientsByIPX[result]; !ok {
-			break
+		packetLen, err := c.node.Read(buf[:])
+		switch {
+		case err == nil:
+			s.socket.WriteToUDP(buf[0:packetLen], c.addr)
+		case err == io.EOF:
+			return
+		default:
+			// Other errors are ignored.
 		}
 	}
-
-	return result
 }
 
 // newClient processes a registration packet, adding a new client if necessary.
@@ -102,12 +106,12 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	if !ok {
 		c = &client{
 			addr:            addr,
-			ipxAddr:         s.newAddress(),
 			lastReceiveTime: time.Now(),
+			node:            s.net.NewNode(),
 		}
 
 		s.clients[addrStr] = c
-		s.clientsByIPX[c.ipxAddr] = c
+		go s.runClient(c)
 	}
 
 	// Send a reply back to the client
@@ -117,7 +121,7 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 		TransControl: 0,
 		Dest: ipx.HeaderAddr{
 			Network: [4]byte{0, 0, 0, 0},
-			Addr:    c.ipxAddr,
+			Addr:    c.node.Address(),
 			Socket:  2,
 		},
 		Src: ipx.HeaderAddr{
@@ -132,38 +136,6 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	if err == nil {
 		s.socket.WriteToUDP(encodedReply, c.addr)
 	}
-}
-
-// forwardBroadcastPacket takes a broadcast packet received from a client and
-// forwards it to all other clients.
-func (s *Server) forwardBroadcastPacket(header *ipx.Header, packet []byte) error {
-	var err error
-	for _, c := range s.clients {
-		if c.ipxAddr == header.Src.Addr {
-			continue
-		}
-		c.lastSendTime = time.Now()
-		_, err = s.socket.WriteToUDP(packet, c.addr)
-	}
-	return err
-}
-
-// forwardPacket takes a packet received from a client and forwards it on
-// to another client.
-func (s *Server) forwardPacket(header *ipx.Header, packet []byte) error {
-	if header.IsBroadcast() {
-		return s.forwardBroadcastPacket(header, packet)
-	}
-
-	// We can only forward it on if the destination IPX address corresponds
-	// to a client that we know about:
-	c, ok := s.clientsByIPX[header.Dest.Addr]
-	if !ok {
-		return UnknownClientError
-	}
-	c.lastSendTime = time.Now()
-	_, err := s.socket.WriteToUDP(packet, c.addr)
-	return err
 }
 
 // processPacket decodes and processes a received UDP packet, sending responses
@@ -185,35 +157,12 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 	if !ok {
 		return
 	}
-	if header.Src.Addr != srcClient.ipxAddr {
+	if header.Src.Addr != srcClient.node.Address() {
 		return
 	}
-
+	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
-	s.forwardPacket(&header, packet)
-	if s.tap != nil {
-		s.tap.packets <- packet
-	}
-}
-
-// New creates a new Server, listening on the given address.
-func New(addr string, c *Config) (*Server, error) {
-	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
-	if err != nil {
-		return nil, err
-	}
-	socket, err := net.ListenUDP("udp", udp4Addr)
-	if err != nil {
-		return nil, err
-	}
-	s := &Server{
-		config:           c,
-		socket:           socket,
-		clients:          map[string]*client{},
-		clientsByIPX:     map[ipx.Addr]*client{},
-		timeoutCheckTime: time.Now().Add(10e9),
-	}
-	return s, nil
+	srcClient.node.Write(packet)
 }
 
 // sendPing transmits a ping packet to the given client. The DOSbox IPX client
@@ -274,7 +223,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
 			delete(s.clients, c.addr.String())
-			delete(s.clientsByIPX, c.ipxAddr)
+			c.node.Close()
 		}
 
 		if keepaliveTime.Before(nextCheckTime) {
@@ -294,12 +243,7 @@ func (s *Server) poll() error {
 	var buf [1500]byte
 
 	s.socket.SetReadDeadline(s.timeoutCheckTime)
-	packetLen, addr, err := s.socket.ReadFromUDP(buf[0:])
-
-	// Packet processing may affect server state, so we acquire the lock
-	// while processing. This is probably less efficient than it could be.
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	packetLen, addr, err := s.socket.ReadFromUDP(buf[:])
 
 	if err == nil {
 		s.processPacket(buf[0:packetLen], addr)
@@ -325,65 +269,8 @@ func (s *Server) Run() {
 	}
 }
 
-// Write writes an IPX packet, forwarding to the appropriate client. An error
-// of type UnknownClientError is returned if there is no client associated
-// with the destination address.
-func (s *Server) Write(packet []byte) (int, error) {
-	var header ipx.Header
-	if err := header.UnmarshalBinary(packet); err != nil {
-		return 0, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.forwardPacket(&header, packet); err != nil {
-		return 0, err
-	}
-	return len(packet), nil
-}
-
 // Close closes the socket associated with the server to shut it down.
 func (s *Server) Close() error {
+
 	return s.socket.Close()
-}
-
-// Tap returns a tap object that can be used to inspect packets being received
-// by the server. Only one tap can be created on a server at a time. After a
-// tap is created, the Read() method must be continually called or the server
-// will stall.
-func (s *Server) Tap() *Tap {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.tap == nil {
-		s.tap = &Tap{
-			s:       s,
-			packets: make(chan []byte),
-		}
-	}
-	return s.tap
-}
-
-// Read reads another packet from the server into the given buffer. If the
-// buffer is too small the packet is truncated.
-func (t *Tap) Read(p []byte) (int, error) {
-	packet, ok := <-t.packets
-	if !ok {
-		return 0, io.EOF
-	}
-	cnt := len(packet)
-	if len(p) < cnt {
-		cnt = len(p)
-	}
-	copy(p[0:cnt], packet[0:cnt])
-	return cnt, nil
-}
-
-// Close shuts down the server tap and stops receiving packets.
-func (t *Tap) Close() error {
-	t.s.mu.Lock()
-	defer t.s.mu.Unlock()
-	t.s.tap = nil
-	close(t.packets)
-	return nil
 }
