@@ -271,6 +271,10 @@ func (s *Server) Run() {
 
 // Close closes the socket associated with the server to shut it down.
 func (s *Server) Close() error {
-
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, client := range s.clients {
+		client.node.Close()
+	}
 	return s.socket.Close()
 }
