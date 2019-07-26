@@ -3,10 +3,10 @@
 package virtual
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"strings"
 	"sync"
 
@@ -99,9 +99,7 @@ func (n *Network) addNode(node *node) {
 	for {
 		var addr ipx.Addr
 		addr[0] = 0x02
-		for i := 1; i < len(addr); i++ {
-			addr[i] = byte(rand.Intn(255))
-		}
+		rand.Read(addr[1:])
 		n.mu.Lock()
 		if _, ok := n.nodesByIPX[addr]; !ok {
 			node.addr = addr
