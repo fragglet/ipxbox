@@ -62,7 +62,7 @@ func (n *node) Read(data []byte) (int, error) {
 
 // Write writes a packet into the network from the given node.
 func (n *node) Write(packet []byte) (int, error) {
-	return n.net.Write(packet)
+	return n.net.writeFromSource(packet, n)
 }
 
 // Address returns the address of the given node.
@@ -87,7 +87,7 @@ func (t *Tap) Read(data []byte) (int, error) {
 
 // Write writes a packet into the network.
 func (t *Tap) Write(packet []byte) (int, error) {
-	return t.net.Write(packet)
+	return t.net.writeFromSource(packet, t)
 }
 
 // addNode adds a new node to the network, setting its address to an unused
@@ -126,13 +126,16 @@ func (n *Network) NewNode() network.Node {
 }
 
 // forwardBroadcastPacket takes a broadcast packet received from a node and
-// forwards it to all other clients.
-func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte) error {
+// forwards it to all other clients; however, it is never sent back to the
+// source node from which it came.
+func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte, src io.Writer) error {
 	errs := []string{}
 	nodes := []*node{}
 	n.mu.RLock()
 	for _, node := range n.nodesByIPX {
-		nodes = append(nodes, node)
+		if node != src {
+			nodes = append(nodes, node)
+		}
 	}
 	n.mu.RUnlock()
 	for _, node := range nodes {
@@ -151,12 +154,15 @@ func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte) erro
 }
 
 // forwardToTaps sends the given packet to all taps which are currently
-// listening to network traffic.
-func (n *Network) forwardToTaps(packet []byte) {
+// listening to network traffic. We don't forward packets back to the source
+// that sent them, though.
+func (n *Network) forwardToTaps(packet []byte, src io.Writer) {
 	taps := []*Tap{}
 	n.mu.RLock()
 	for _, tap := range n.taps {
-		taps = append(taps, tap)
+		if tap != src {
+			taps = append(taps, tap)
+		}
 	}
 	n.mu.RUnlock()
 	for _, tap := range taps {
@@ -165,10 +171,10 @@ func (n *Network) forwardToTaps(packet []byte) {
 }
 
 // forwardPacket receives a packet and forwards it on to another node.
-func (n *Network) forwardPacket(header *ipx.Header, packet []byte) error {
-	n.forwardToTaps(packet)
+func (n *Network) forwardPacket(header *ipx.Header, packet []byte, src io.Writer) error {
+	n.forwardToTaps(packet, src)
 	if header.IsBroadcast() {
-		return n.forwardBroadcastPacket(header, packet)
+		return n.forwardBroadcastPacket(header, packet, src)
 	}
 
 	// We can only forward it on if the destination IPX address corresponds
@@ -183,14 +189,14 @@ func (n *Network) forwardPacket(header *ipx.Header, packet []byte) error {
 	return err
 }
 
-// Write writes a packet to the network, forwarding to the right node as
-// appropriate.
-func (n *Network) Write(packet []byte) (int, error) {
+// writeFromSource writes a packet to the network, forwarding to the right
+// node as appropriate.
+func (n *Network) writeFromSource(packet []byte, src io.Writer) (int, error) {
 	var header ipx.Header
 	if err := header.UnmarshalBinary(packet); err != nil {
 		return 0, err
 	}
-	if err := n.forwardPacket(&header, packet); err != nil {
+	if err := n.forwardPacket(&header, packet, src); err != nil {
 		return 0, err
 	}
 	return len(packet), nil
