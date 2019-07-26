@@ -10,10 +10,13 @@ import (
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/virtual"
+
+	"github.com/google/gopacket/pcap"
 	"github.com/songgao/water"
 )
 
 var (
+	pcapDevice    = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
 	enableTap     = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
 	dumpPackets   = flag.Bool("dump_packets", false, "Dump packets to stdout.")
 	port          = flag.Int("port", 10000, "UDP port to listen on.")
@@ -51,6 +54,18 @@ func main() {
 		p, err := phys.New(water.Config{})
 		if err != nil {
 			log.Fatalf("failed to start tap: %v", err)
+		}
+		tap := v.Tap()
+		go bridge.Run(tap, tap, p, p)
+	} else if *pcapDevice != "" {
+		// TODO: List
+		handle, err := pcap.OpenLive(*pcapDevice, 1500, true, pcap.BlockForever)
+		if err != nil {
+			log.Fatalf("failed to open pcap: %v", err)
+		}
+		p, err := phys.NewPcap(handle)
+		if err != nil {
+			log.Fatalf("failed to create pcap physical wrapper: %v", err)
 		}
 		tap := v.Tap()
 		go bridge.Run(tap, tap, p, p)
