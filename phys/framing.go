@@ -103,7 +103,7 @@ func (framer802_2) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.Seria
 			SrcMAC:       net.HardwareAddr(hdr.Src.Addr[:]),
 			DstMAC:       dest,
 			EthernetType: layers.EthernetTypeLLC,
-			Length: uint16(len(packet) + 3),
+			Length:       uint16(len(packet) + 3),
 		},
 		&layers.LLC{
 			DSAP:    lsapNovell,
@@ -143,7 +143,7 @@ func (framerSNAP) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.Serial
 			SrcMAC:       net.HardwareAddr(hdr.Src.Addr[:]),
 			DstMAC:       dest,
 			EthernetType: layers.EthernetTypeLLC,
-			Length: uint16(len(packet) + 8),
+			Length:       uint16(len(packet) + 8),
 		},
 		&layers.LLC{
 			DSAP:    lsapSNAP,
@@ -151,7 +151,7 @@ func (framerSNAP) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.Serial
 			Control: 3,
 		},
 		&layers.SNAP{
-			Type: etherTypeIPX,
+			Type:               etherTypeIPX,
 			OrganizationalCode: []byte{0, 0, 0},
 		},
 		gopacket.Payload(packet),

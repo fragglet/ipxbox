@@ -16,9 +16,9 @@ var (
 )
 
 type PcapPhys struct {
-	handle    *pcap.Handle
-	ps        *gopacket.PacketSource
-	framer    Framer
+	handle *pcap.Handle
+	ps     *gopacket.PacketSource
+	framer Framer
 }
 
 func NewPcap(handle *pcap.Handle, framer Framer) (*PcapPhys, error) {
@@ -27,9 +27,9 @@ func NewPcap(handle *pcap.Handle, framer Framer) (*PcapPhys, error) {
 	}
 	ps := gopacket.NewPacketSource(handle, handle.LinkType())
 	return &PcapPhys{
-		handle:    handle,
-		ps:        ps,
-		framer:    framer,
+		handle: handle,
+		ps:     ps,
+		framer: framer,
 	}, nil
 }
 

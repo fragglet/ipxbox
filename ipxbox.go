@@ -23,12 +23,12 @@ var framers = map[string]phys.Framer{
 }
 
 var (
-	pcapDevice    = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
-	enableTap     = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
-	dumpPackets   = flag.Bool("dump_packets", false, "Dump packets to stdout.")
-	port          = flag.Int("port", 10000, "UDP port to listen on.")
-	clientTimeout = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
-	ethernetFraming       = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
+	pcapDevice      = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
+	enableTap       = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
+	dumpPackets     = flag.Bool("dump_packets", false, "Dump packets to stdout.")
+	port            = flag.Int("port", 10000, "UDP port to listen on.")
+	clientTimeout   = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
+	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
 )
 
 func printPackets(v *virtual.Network) {

@@ -41,7 +41,7 @@ var (
 	AddrNull      = Addr([6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	AddrBroadcast = Addr([6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
 
-	minHeaderLength = 30
+	minHeaderLength        = 30
 	minHeaderAddressLength = 12
 )
 
