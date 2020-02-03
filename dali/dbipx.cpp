@@ -46,14 +46,17 @@ static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 	const struct ipx_header *ipx;
 
 	if (ntohs(udp->len) < sizeof(struct ipx_header)) {
+		Buffer_free(packet);
 		return;
 	}
-	ipx = (const struct ipx_header *) packet;
+
+	ipx = (const struct ipx_header *) (packet + sizeof(UdpPacket_t));
 	if (ntohs(ipx->src.socket) == 2 && ntohs(ipx->dest.socket) == 2) {
 		registered = 1;
 		memcpy(&local_addr, &ipx->dest, sizeof(struct ipx_address));
-		return;
 	}
+
+	Buffer_free(packet);
 }
 
 static void SendRegistration(void)
