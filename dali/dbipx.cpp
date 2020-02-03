@@ -124,7 +124,9 @@ void DBIPX_Connect(const char *addr, int port)
 	udp_port = port;
 
 	registered = 0;
-	Udp::registerCallback(port, PacketReceived);
+	if (Udp::registerCallback(port, PacketReceived) != 0) {
+		Error("Failed to register UDP callback function");
+	}
 
 	Delay(TIMER_TICKS_PER_SEC);
 
