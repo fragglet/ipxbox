@@ -77,6 +77,8 @@ static void Delay(int timer_ticks)
 	clockTicks_t start = TIMER_GET_CURRENT();
 
 	while (Timer_diff(start, TIMER_GET_CURRENT()) < timer_ticks) {
+		PACKET_PROCESS_SINGLE;
+		Arp::driveArp( );
 	}
 }
 
