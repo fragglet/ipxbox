@@ -141,8 +141,15 @@ void DBIPX_Connect(const char *addr, int port)
 	}
 
 	if (!registered) {
-		Error("No response from server at %s:%d", addr, port);
+		Error("No response from server at %d.%d.%d.%d:%d",
+		      server_addr[0], server_addr[1], server_addr[2],
+		      server_addr[3], port);
 	}
+}
+
+void DBIPX_GetAddress(char *addr)
+{
+	memcpy(addr, local_addr.node, sizeof(local_addr.node));
 }
 
 }
