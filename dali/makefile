@@ -10,7 +10,7 @@ CFLAGS += -i=$(TCP_H_DIR) -i=$(COMMON_H_DIR)
 MTCP_OBJS = packet.obj dns.obj arp.obj eth.obj ip.obj udp.obj utils.obj timer.obj ipasm.obj trace.obj
 OBJS = dbipx.obj dali.obj
 
-all : clean dali.exe
+all : dali.exe
 
 clean : .symbolic
 	@del dali.exe
