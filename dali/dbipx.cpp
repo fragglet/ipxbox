@@ -45,7 +45,7 @@ static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 {
 	const struct ipx_header *ipx;
 
-	if (udp->len < sizeof(struct ipx_header)) {
+	if (ntohs(udp->len) < sizeof(struct ipx_header)) {
 		return;
 	}
 	ipx = (const struct ipx_header *) packet;
@@ -58,18 +58,18 @@ static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 
 static void SendRegistration(void)
 {
-	struct ipx_header ipx;
+	static struct ipx_header tmphdr;
 
-	memset(&ipx, 0, sizeof(ipx));
-	ipx.dest.socket = 2;
-	ipx.src.socket = 2;
-	ipx.checksum = 0xffff;
-	ipx.length = 0x1e;
-	ipx.transport_control = 0;
-	ipx.type = 0xff;
+	memset(&tmphdr, 0, sizeof(tmphdr));
+	tmphdr.dest.socket = htons(2);
+	tmphdr.src.socket = htons(2);
+	tmphdr.checksum = htons(0xffff);
+	tmphdr.length = htons(0x1e);
+	tmphdr.transport_control = 0;
+	tmphdr.type = 0xff;
 
 	Udp::sendUdp(server_addr, udp_port, udp_port,
-	             sizeof(ipx), (unsigned char *) &ipx, 0);
+	             sizeof(tmphdr), (unsigned char *) &tmphdr, 0);
 }
 
 static void Delay(int timer_ticks)
