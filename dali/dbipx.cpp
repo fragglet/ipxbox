@@ -1,5 +1,8 @@
 
+// Implementation of DOSbox UDP protocol, using the DOS mTCP stack.
+
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,7 +12,9 @@ extern "C" {
 
 #include "dbipx.h"
 
+#include "arp.h"
 #include "dns.h"
+#include "packet.h"
 #include "timer.h"
 #include "udp.h"
 
@@ -75,15 +80,40 @@ static void Delay(int timer_ticks)
 	}
 }
 
+static void ResolveAddress(const char *addr)
+{
+	if (Dns::resolve(addr, server_addr, 1) < 0) {
+		Error("Error resolving server address '%s'", addr);
+	}
+
+	while (Dns::isQueryPending()) {
+		PACKET_PROCESS_SINGLE;
+		Arp::driveArp();
+		Dns::drivePendingQuery();
+	}
+
+	if (Dns::resolve(addr, server_addr, 0) != 0) {
+		Error("Failed to resolve server address '%s'", addr);
+	}
+}
+
+static void __interrupt __far CtrlBreakHandler() {
+}
+
 void DBIPX_Connect(const char *addr, int port)
 {
 	int i;
 
-	udp_port = port;
-
-	if (Dns::resolve(addr, server_addr, 1) < 0) {
-		Error("Failed to resolve server address '%s'", addr);
+	if (Utils::parseEnv() != 0) {
+		Error("Error parsing environment for mTCP initialization.");
 	}
+
+	if (Utils::initStack(0, 0, CtrlBreakHandler, CtrlBreakHandler)) {
+		Error("Error initializing TCP/IP stack.");
+	}
+
+	ResolveAddress(addr);
+	udp_port = port;
 
 	registered = 0;
 	Udp::registerCallback(port, PacketReceived);
