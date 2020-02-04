@@ -1,4 +1,7 @@
 
+#ifndef IPX_H
+#define IPX_H
+
 struct ipx_address {
 	unsigned char network[4];
 	unsigned char node[6];
@@ -32,4 +35,8 @@ struct ipx_ecb {
 	
 	struct ipx_ecb_fragment fragments[1]; // [fragment_count]
 };
+
+void HookIPXVector(void);
+
+#endif /* IPX_H */
 
