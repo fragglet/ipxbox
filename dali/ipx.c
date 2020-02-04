@@ -6,6 +6,7 @@
 #include "inlines.h"
 
 #define IPX_INTERRUPT 0x7a
+#define REDIRECTOR_INTERRUPT 0x2f
 
 #define MAX_OPEN_SOCKETS 8
 
@@ -31,7 +32,8 @@ struct ipx_socket {
 	unsigned short socket;
 };
 
-static void (interrupt far *old_isr)(void);
+static void (__interrupt far *old_isr)(void);
+static void (__interrupt far *next_redirector)(void);
 static struct ipx_socket open_sockets[MAX_OPEN_SOCKETS];
 static unsigned int num_open_sockets;
 
@@ -90,17 +92,14 @@ static void CloseSocket(unsigned int num)
 	sock->socket = 0;
 }
 
-static void interrupt IPX_ISR(
-	unsigned int bp, unsigned int di, unsigned int si,
-	unsigned int ds, unsigned int es, unsigned int dx,
-	unsigned int cx, unsigned int bx, unsigned int ax)
+static void __interrupt IPX_ISR(union INTPACK ip)
 {
-	switch (bx) {
+	switch (ip.w.bx) {
 		case IPX_CMD_OPEN_SOCKET:
-			ax = OpenSocket(htons(dx));
+			ip.w.ax = OpenSocket(htons(ip.w.dx));
 			break;
 		case IPX_CMD_CLOSE_SOCKET:
-			CloseSocket(htons(dx));
+			CloseSocket(htons(ip.w.dx));
 			break;
 		case IPX_CMD_GET_LOCAL_TGT:
 			// TODO
@@ -131,25 +130,38 @@ static void interrupt IPX_ISR(
 			// no-op
 			break;
 		case IPX_CMD_GET_PKT_SIZE:
-			ax = 1024;
-			cx = 0;
+			ip.w.ax = 1024;
+			ip.w.cx = 0;
 			break;
 		case IPX_CMD_SPX_INSTALLED:
-			ax = 0;
+			ip.w.ax = 0;
 			break;
 		case IPX_CMD_GET_MTU:
-			ax = MTU;
-			cx = 0;
+			ip.w.ax = MTU;
+			ip.w.cx = 0;
 			break;
 		default:
 			break;
 	}
 }
 
+static void __interrupt RedirectorISR(union INTPACK ip)
+{
+	if (ip.w.ax == 0x7a00) {
+		ip.h.al = 0xff;
+		return;
+	}
+
+	// TODO: Answer IPX API requests on this ISR too?
+
+	_chain_intr(next_redirector);
+}
+
 static void UnhookVector(void)
 {
 	_disable();
 	_dos_setvect(IPX_INTERRUPT, old_isr);
+	_dos_setvect(REDIRECTOR_INTERRUPT, next_redirector);
 	_enable();
 }
 
@@ -158,6 +170,8 @@ void HookIPXVector(void)
 	_disable();
 	old_isr = _dos_getvect(IPX_INTERRUPT);
 	_dos_setvect(IPX_INTERRUPT, IPX_ISR);
+	next_redirector = _dos_getvect(REDIRECTOR_INTERRUPT);
+	_dos_setvect(REDIRECTOR_INTERRUPT, RedirectorISR);
 	_enable();
 
 	atexit(UnhookVector);
