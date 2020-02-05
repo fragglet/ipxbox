@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "inlines.h"
+#include "ipx.h"
 
 #define IPX_INTERRUPT 0x7a
 #define REDIRECTOR_INTERRUPT 0x2f
@@ -92,7 +93,14 @@ static void CloseSocket(unsigned int num)
 	sock->socket = 0;
 }
 
-static void __interrupt IPX_ISR(union INTPACK ip)
+static int ListenPacket(struct ipx_ecb far *ecb)
+{
+	ecb->in_use = 1;
+	// TODO
+	return 0;
+}
+
+static void __interrupt __far IPX_ISR(union INTPACK ip)
 {
 	switch (ip.w.bx) {
 		case IPX_CMD_OPEN_SOCKET:
@@ -103,12 +111,14 @@ static void __interrupt IPX_ISR(union INTPACK ip)
 			break;
 		case IPX_CMD_GET_LOCAL_TGT:
 			// TODO
+			ip.w.ax = 0;
 			break;
 		case IPX_CMD_SEND_PACKET:
 			// TODO
+			ip.w.ax = 0;
 			break;
 		case IPX_CMD_LISTEN_PACKET:
-			// TODO
+			ip.w.ax = ListenPacket(MK_FP(ip.w.es, ip.w.si));
 			break;
 		case IPX_CMD_SCHED_EVENT:
 			// TODO
@@ -145,7 +155,7 @@ static void __interrupt IPX_ISR(union INTPACK ip)
 	}
 }
 
-static void __interrupt RedirectorISR(union INTPACK ip)
+static void __interrupt __far RedirectorISR(union INTPACK ip)
 {
 	if (ip.w.ax == 0x7a00) {
 		ip.h.al = 0xff;
