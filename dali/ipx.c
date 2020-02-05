@@ -31,6 +31,7 @@
 
 struct ipx_socket {
 	unsigned short socket;
+	struct ipx_ecb far *ecbs;
 };
 
 static void (__interrupt far *old_isr)(void);
@@ -73,6 +74,7 @@ static unsigned short OpenSocket(unsigned int num)
 	}
 
 	sock->socket = num;
+	sock->ecbs = NULL;
 	// TODO: DX for socket number
 	return 0;
 }
@@ -95,8 +97,16 @@ static void CloseSocket(unsigned int num)
 
 static int ListenPacket(struct ipx_ecb far *ecb)
 {
+	struct ipx_socket *sock = FindSocket(ecb->socket);
+
+	if (sock == NULL) {
+		ecb->completion_code = 0xff;
+		return 0xff;
+	}
+
+	ecb->next_ecb = sock->ecbs;
+	sock->ecbs = ecb;
 	ecb->in_use = 1;
-	// TODO
 	return 0;
 }
 

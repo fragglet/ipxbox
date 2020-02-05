@@ -28,7 +28,7 @@ struct ipx_ecb {
 	unsigned char in_use;
 	unsigned char completion_code;
 	unsigned short socket;
-	unsigned char ipx_workspace[4];
+	struct ipx_ecb far *next_ecb;  // ipx_workspace
 	unsigned char driver_workspace[12];
 	unsigned char immediate_address[6];
 	unsigned short fragment_count;
