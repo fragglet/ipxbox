@@ -2,9 +2,11 @@
 #include <dos.h>
 #include <i86.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "inlines.h"
 #include "ipx.h"
+#include "dbipx.h"
 
 #define IPX_INTERRUPT 0x7a
 #define REDIRECTOR_INTERRUPT 0x2f
@@ -34,6 +36,7 @@ struct ipx_socket {
 	struct ipx_ecb far *ecbs;
 };
 
+static uint8_t sendbuf[MTU];
 static void (__interrupt far *old_isr)(void);
 static void (__interrupt far *next_redirector)(void);
 static struct ipx_socket open_sockets[MAX_OPEN_SOCKETS];
@@ -52,31 +55,36 @@ static struct ipx_socket *FindSocket(unsigned short num)
 	return NULL;
 }
 
-static unsigned short OpenSocket(unsigned int num)
+static void OpenSocket(union INTPACK far *ip)
 {
 	struct ipx_socket *sock;
+	int socknum;
 
-	if (num == 0) {
-		num = 0x4002;
-		while (FindSocket(num) != NULL) {
-			++num;
+	socknum = ntohs(ip->w.dx);
+
+	if (socknum == 0) {
+		socknum = 0x4002;
+		while (FindSocket(socknum) != NULL) {
+			++socknum;
 		}
 	}
 
 	// Already in use?
-	if (FindSocket(num) != NULL) {
-		return 0xff;
+	if (FindSocket(socknum) != NULL) {
+		ip->w.ax = 0xff;
+		return;
 	}
 
 	sock = FindSocket(0);
 	if (sock == NULL) {
-		return 0xfe;
+		ip->w.ax = 0xfe;
+		return;
 	}
 
-	sock->socket = num;
+	sock->socket = socknum;
 	sock->ecbs = NULL;
-	// TODO: DX for socket number
-	return 0;
+	ip->w.ax = 0;
+	ip->w.dx = htons(socknum);
 }
 
 static void CloseSocket(unsigned int num)
@@ -95,9 +103,52 @@ static void CloseSocket(unsigned int num)
 	sock->socket = 0;
 }
 
+static int SendPacket(struct ipx_ecb far *ecb)
+{
+	struct ipx_header *pkt;
+	uint8_t far *fragptr;
+	int size;
+	int i;
+
+	size = 0;
+	for (i = 0; i < ecb->fragment_count; ++i) {
+		size += ecb->fragments[i].size;
+	}
+
+	if (size > MTU) {
+		ecb->in_use = 0;
+		ecb->completion_code = 0xff;
+		return 0xff;
+	}
+
+	size = 0;
+	for (i = 0; i < ecb->fragment_count; ++i) {
+		fragptr = MK_FP(ecb->fragments[i].seg, ecb->fragments[i].off);
+		_fmemcpy(&sendbuf[size], fragptr, ecb->fragments[i].size);
+		size += ecb->fragments[i].size;
+	}
+
+	pkt = (struct ipx_header *) sendbuf;
+	_fmemcpy(&pkt->src, &dbipx_local_addr, sizeof(struct ipx_address));
+	pkt->src.socket = ecb->socket;
+	pkt->length = ntohs(size);
+
+	// TODO: Copy back modified header into fragment
+
+	DBIPX_SendPacket(pkt, size);
+
+	// TODO: Loopback delivery and broadcast
+
+	ecb->in_use = 0;
+	ecb->completion_code = 0;
+	// TODO: ESR notification
+
+	return 0;
+}
+
 static int ListenPacket(struct ipx_ecb far *ecb)
 {
-	struct ipx_socket *sock = FindSocket(ecb->socket);
+	struct ipx_socket *sock = FindSocket(ntohs(ecb->socket));
 
 	if (sock == NULL) {
 		ecb->completion_code = 0xff;
@@ -112,20 +163,21 @@ static int ListenPacket(struct ipx_ecb far *ecb)
 
 static void __interrupt __far IPX_ISR(union INTPACK ip)
 {
+	DBIPX_Poll();
+
 	switch (ip.w.bx) {
 		case IPX_CMD_OPEN_SOCKET:
-			ip.w.ax = OpenSocket(htons(ip.w.dx));
+			OpenSocket(&ip);
 			break;
 		case IPX_CMD_CLOSE_SOCKET:
-			CloseSocket(htons(ip.w.dx));
+			CloseSocket(ntohs(ip.w.dx));
 			break;
 		case IPX_CMD_GET_LOCAL_TGT:
 			// TODO
 			ip.w.ax = 0;
 			break;
 		case IPX_CMD_SEND_PACKET:
-			// TODO
-			ip.w.ax = 0;
+			ip.w.ax = SendPacket(MK_FP(ip.w.es, ip.w.si));
 			break;
 		case IPX_CMD_LISTEN_PACKET:
 			ip.w.ax = ListenPacket(MK_FP(ip.w.es, ip.w.si));

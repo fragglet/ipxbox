@@ -19,13 +19,11 @@ extern "C" {
 #include "udp.h"
 
 #define REG_ATTEMPTS 5
-#define MTU 576
 
-static uint8_t buf[MTU];
 static IpAddr_t server_addr;
 static int udp_port;
 static int registered;
-static struct ipx_address local_addr;
+struct ipx_address dbipx_local_addr;
 
 extern "C" {
 
@@ -53,7 +51,7 @@ static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 	ipx = (const struct ipx_header *) (packet + sizeof(UdpPacket_t));
 	if (ntohs(ipx->src.socket) == 2 && ntohs(ipx->dest.socket) == 2) {
 		registered = 1;
-		memcpy(&local_addr, &ipx->dest, sizeof(struct ipx_address));
+		memcpy(&dbipx_local_addr, &ipx->dest, sizeof(struct ipx_address));
 	}
 
 	Buffer_free(packet);
@@ -80,8 +78,7 @@ static void Delay(int timer_ticks)
 	clockTicks_t start = TIMER_GET_CURRENT();
 
 	while (Timer_diff(start, TIMER_GET_CURRENT()) < timer_ticks) {
-		PACKET_PROCESS_SINGLE;
-		Arp::driveArp( );
+		DBIPX_Poll();
 	}
 }
 
@@ -92,8 +89,7 @@ static void ResolveAddress(const char *addr)
 	}
 
 	while (Dns::isQueryPending()) {
-		PACKET_PROCESS_SINGLE;
-		Arp::driveArp();
+		DBIPX_Poll();
 		Dns::drivePendingQuery();
 	}
 
@@ -108,6 +104,7 @@ static void __interrupt __far CtrlBreakHandler() {
 static void ShutdownStack(void)
 {
 	Utils::endStack();
+	Utils::dumpStats(stdout);
 }
 
 void DBIPX_Connect(const char *addr, int port)
@@ -147,9 +144,18 @@ void DBIPX_Connect(const char *addr, int port)
 	}
 }
 
-void DBIPX_GetAddress(char *addr)
+void DBIPX_SendPacket(struct ipx_header *pkt, size_t len)
 {
-	memcpy(addr, local_addr.node, sizeof(local_addr.node));
+	Udp::sendUdp(server_addr, udp_port, udp_port,
+	             len, (uint8_t *) pkt, 0);
+}
+
+void DBIPX_Poll(void)
+{
+	while (Buffer_first != Buffer_next) {
+		PACKET_PROCESS_SINGLE;
+		Arp::driveArp();
+	}
 }
 
 }

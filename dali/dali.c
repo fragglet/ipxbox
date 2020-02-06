@@ -9,7 +9,7 @@
 
 int main(int argc, char *argv[])
 {
-	char addr[6];
+	char *addr;
 
 	if (argc < 3) {
 		fprintf(stderr, "Usage: %s <addr> <port>\n", argv[0]);
@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 
 	DBIPX_Connect(argv[1], atoi(argv[2]));
 	printf("Connected successfully!\n");
-	DBIPX_GetAddress(addr);
+	addr = dbipx_local_addr.node;
 	printf("Assigned address is %02x:%02x:%02x:%02x:%02x:%02x.\n",
 	       addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
