@@ -41,6 +41,25 @@ static void (__interrupt far *old_isr)(void);
 static void (__interrupt far *next_redirector)(void);
 static struct ipx_socket open_sockets[MAX_OPEN_SOCKETS];
 static unsigned int num_open_sockets;
+static unsigned int saved_ss, saved_sp;
+
+extern void SwitchStack(unsigned int);
+#pragma aux SwitchStack = \
+	"mov saved_ss, ss" \
+	"mov saved_sp, sp" \
+	"mov bx, ds" \
+	"mov ss, bx" \
+	"mov sp, ax" \
+	parm [ax] \
+	modify [bx];
+extern void RestoreStack(void);
+#pragma aux RestoreStack =\
+	"mov ss, saved_ss" \
+	"mov sp, saved_sp";
+
+static unsigned char isr_stack_space[512];
+#define SWITCH_ISR_STACK \
+	SwitchStack(FP_OFF(isr_stack_space + sizeof(isr_stack_space) - 32))
 
 static struct ipx_socket *FindSocket(unsigned short num)
 {
@@ -161,26 +180,24 @@ static int ListenPacket(struct ipx_ecb far *ecb)
 	return 0;
 }
 
-static void __interrupt __far IPX_ISR(union INTPACK ip)
+static void Real_IPX_ISR(union INTPACK far *ip)
 {
-	DBIPX_Poll();
-
-	switch (ip.w.bx) {
+	switch (ip->w.bx) {
 		case IPX_CMD_OPEN_SOCKET:
-			OpenSocket(&ip);
+			OpenSocket(ip);
 			break;
 		case IPX_CMD_CLOSE_SOCKET:
-			CloseSocket(ntohs(ip.w.dx));
+			CloseSocket(ntohs(ip->w.dx));
 			break;
 		case IPX_CMD_GET_LOCAL_TGT:
 			// TODO
-			ip.w.ax = 0;
+			ip->w.ax = 0;
 			break;
 		case IPX_CMD_SEND_PACKET:
-			ip.w.ax = SendPacket(MK_FP(ip.w.es, ip.w.si));
+			ip->w.ax = SendPacket(MK_FP(ip->w.es, ip->w.si));
 			break;
 		case IPX_CMD_LISTEN_PACKET:
-			ip.w.ax = ListenPacket(MK_FP(ip.w.es, ip.w.si));
+			ip->w.ax = ListenPacket(MK_FP(ip->w.es, ip->w.si));
 			break;
 		case IPX_CMD_SCHED_EVENT:
 			// TODO
@@ -202,19 +219,29 @@ static void __interrupt __far IPX_ISR(union INTPACK ip)
 			// no-op
 			break;
 		case IPX_CMD_GET_PKT_SIZE:
-			ip.w.ax = 1024;
-			ip.w.cx = 0;
+			ip->w.ax = 1024;
+			ip->w.cx = 0;
 			break;
 		case IPX_CMD_SPX_INSTALLED:
-			ip.w.ax = 0;
+			ip->w.ax = 0;
 			break;
 		case IPX_CMD_GET_MTU:
-			ip.w.ax = MTU;
-			ip.w.cx = 0;
+			ip->w.ax = MTU;
+			ip->w.cx = 0;
 			break;
 		default:
 			break;
 	}
+}
+
+static void __interrupt __far IPX_ISR(union INTPACK ip)
+{
+	static union INTPACK far *_ip;
+	_ip = &ip;
+
+	SWITCH_ISR_STACK;
+	Real_IPX_ISR(_ip);
+	RestoreStack();
 }
 
 static void __interrupt __far RedirectorISR(union INTPACK ip)
