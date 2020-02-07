@@ -214,7 +214,8 @@ static void Real_IPX_ISR(union INTPACK far *ip)
 			// TODO
 			break;
 		case IPX_CMD_GET_ADDRESS:
-			// TODO
+			_fmemcpy(MK_FP(ip->w.es, ip->w.si),
+			         &dbipx_local_addr, sizeof(struct ipx_address));
 			break;
 		case IPX_CMD_RELINQUISH:
 		case IPX_CMD_DISCONNECT:
