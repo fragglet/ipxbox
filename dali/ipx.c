@@ -8,8 +8,9 @@
 #include "ipx.h"
 #include "dbipx.h"
 
-#define IPX_INTERRUPT 0x7a
-#define REDIRECTOR_INTERRUPT 0x2f
+#define TIMER_INTERRUPT       0x08
+#define IPX_INTERRUPT         0x7a
+#define REDIRECTOR_INTERRUPT  0x2f
 
 #define MAX_OPEN_SOCKETS 8
 
@@ -38,6 +39,7 @@ struct ipx_socket {
 
 static uint8_t sendbuf[MTU];
 static void (__interrupt far *old_isr)(void);
+static void (__interrupt far *old_timer_isr)(void);
 static void (__interrupt far *next_redirector)(void);
 static struct ipx_socket open_sockets[MAX_OPEN_SOCKETS];
 static unsigned int num_open_sockets;
@@ -256,11 +258,21 @@ static void __interrupt __far RedirectorISR(union INTPACK ip)
 	_chain_intr(next_redirector);
 }
 
+static void __interrupt __far TimerISR(union INTPACK ip)
+{
+	SWITCH_ISR_STACK;
+	DBIPX_Poll();
+	RestoreStack();
+
+	_chain_intr(old_timer_isr);
+}
+
 static void UnhookVector(void)
 {
 	_disable();
 	_dos_setvect(IPX_INTERRUPT, old_isr);
 	_dos_setvect(REDIRECTOR_INTERRUPT, next_redirector);
+	_dos_setvect(TIMER_INTERRUPT, old_timer_isr);
 	_enable();
 }
 
@@ -271,6 +283,8 @@ void HookIPXVector(void)
 	_dos_setvect(IPX_INTERRUPT, IPX_ISR);
 	next_redirector = _dos_getvect(REDIRECTOR_INTERRUPT);
 	_dos_setvect(REDIRECTOR_INTERRUPT, RedirectorISR);
+	old_timer_isr = _dos_getvect(TIMER_INTERRUPT);
+	_dos_setvect(TIMER_INTERRUPT, TimerISR);
 	_enable();
 
 	atexit(UnhookVector);
