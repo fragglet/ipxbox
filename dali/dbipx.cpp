@@ -23,6 +23,7 @@ extern "C" {
 static IpAddr_t server_addr;
 static int udp_port;
 static int registered;
+static dbipx_packet_callback rx_callback = NULL;
 struct ipx_address dbipx_local_addr;
 
 extern "C" {
@@ -42,8 +43,9 @@ void Error(char *fmt, ...)
 static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 {
 	const struct ipx_header *ipx;
+	unsigned int len = ntohs(udp->len);
 
-	if (ntohs(udp->len) < sizeof(struct ipx_header)) {
+	if (len < sizeof(struct ipx_header)) {
 		Buffer_free(packet);
 		return;
 	}
@@ -52,6 +54,8 @@ static void PacketReceived(const unsigned char *packet, const UdpHeader *udp)
 	if (ntohs(ipx->src.socket) == 2 && ntohs(ipx->dest.socket) == 2) {
 		registered = 1;
 		memcpy(&dbipx_local_addr, &ipx->dest, sizeof(struct ipx_address));
+	} else if (rx_callback != NULL) {
+		rx_callback(ipx, len);
 	}
 
 	Buffer_free(packet);
@@ -148,6 +152,11 @@ void DBIPX_SendPacket(struct ipx_header *pkt, size_t len)
 {
 	Udp::sendUdp(server_addr, udp_port, udp_port,
 	             len, (uint8_t *) pkt, 0);
+}
+
+void DBIPX_SetCallback(dbipx_packet_callback callback)
+{
+	rx_callback = callback;
 }
 
 void DBIPX_Poll(void)

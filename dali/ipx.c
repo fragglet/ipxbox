@@ -1,6 +1,7 @@
 
 #include <dos.h>
 #include <i86.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,6 +75,76 @@ static struct ipx_socket *FindSocket(unsigned short num)
 	}
 
 	return NULL;
+}
+
+static size_t ECBSize(struct ipx_ecb far *ecb)
+{
+	size_t result = 0;
+	int i;
+
+	for (i = 0; i < ecb->fragment_count; ++i) {
+		result += ecb->fragments[i].size;
+	}
+
+	return result;
+}
+
+static struct ipx_ecb far * far *FindECB(struct ipx_socket *sock, size_t len)
+{
+	struct ipx_ecb far * far *ecb;
+
+	ecb = &sock->ecbs;
+	while (*ecb != NULL) {
+		if (ECBSize(*ecb) >= len) {
+			return ecb;
+		}
+		ecb = &(*ecb)->next_ecb;
+	}
+
+	return NULL;
+}
+
+static void FillECB(struct ipx_ecb far *ecb, const uint8_t *data, size_t len)
+{
+	uint8_t far *fragptr;
+	size_t nbytes;
+	int i;
+	for (i = 0; i < ecb->fragment_count; ++i) {
+		nbytes = ecb->fragments[i].size;
+		if (nbytes > len) {
+			nbytes = len;
+		}
+		fragptr = MK_FP(ecb->fragments[i].seg, ecb->fragments[i].off);
+		_fmemcpy(fragptr, data, nbytes);
+		data += nbytes;
+		len -= nbytes;
+	}
+}
+
+static void PacketReceived(const struct ipx_header *pkt, size_t len)
+{
+	struct ipx_socket *sock;
+	struct ipx_ecb far * far *ecb;
+
+	if (pkt->dest.socket == 0) {
+		return;
+	}
+
+	sock = FindSocket(ntohs(pkt->dest.socket));
+	if (sock == NULL) {
+		return;
+	}
+	ecb = FindECB(sock, len);
+	if (ecb == NULL) {
+		return;
+	}
+	FillECB(*ecb, (const uint8_t *) pkt, len);
+
+	// Mark as delivered and unhook from linked list.
+	(*ecb)->in_use = 0;
+	(*ecb)->completion_code = 0;
+	// TODO: ESR notification
+	*ecb = (*ecb)->next_ecb;
 }
 
 static void OpenSocket(union INTPACK far *ip)
@@ -271,6 +342,7 @@ static void __interrupt __far TimerISR(union INTPACK ip)
 static void UnhookVector(void)
 {
 	_disable();
+	DBIPX_SetCallback(NULL);
 	_dos_setvect(IPX_INTERRUPT, old_isr);
 	_dos_setvect(REDIRECTOR_INTERRUPT, next_redirector);
 	_dos_setvect(TIMER_INTERRUPT, old_timer_isr);
@@ -286,6 +358,7 @@ void HookIPXVector(void)
 	_dos_setvect(REDIRECTOR_INTERRUPT, RedirectorISR);
 	old_timer_isr = _dos_getvect(TIMER_INTERRUPT);
 	_dos_setvect(TIMER_INTERRUPT, TimerISR);
+	DBIPX_SetCallback(PacketReceived);
 	_enable();
 
 	atexit(UnhookVector);
