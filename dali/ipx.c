@@ -141,6 +141,7 @@ static void PacketReceived(const struct ipx_header *pkt, size_t len)
 	FillECB(*ecb, (const uint8_t *) pkt, len);
 
 	// Mark as delivered and unhook from linked list.
+	_fmemcpy(&(*ecb)->immediate_address, pkt->src.node, 6);
 	(*ecb)->in_use = 0;
 	(*ecb)->completion_code = 0;
 	// TODO: ESR notification
@@ -253,6 +254,11 @@ static int ListenPacket(struct ipx_ecb far *ecb)
 	return 0;
 }
 
+static void GetLocalTarget(uint8_t far *dest, struct ipx_address far *src)
+{
+	_fmemcpy(dest, src->node, 6);
+}
+
 static void Real_IPX_ISR(union INTPACK far *ip)
 {
 	switch (ip->w.bx) {
@@ -263,7 +269,8 @@ static void Real_IPX_ISR(union INTPACK far *ip)
 			CloseSocket(ntohs(ip->w.dx));
 			break;
 		case IPX_CMD_GET_LOCAL_TGT:
-			// TODO
+			GetLocalTarget(MK_FP(ip->w.es, ip->w.di),
+			               MK_FP(ip->w.es, ip->w.si));
 			ip->w.ax = 0;
 			break;
 		case IPX_CMD_SEND_PACKET:
