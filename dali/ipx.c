@@ -318,10 +318,26 @@ static void __interrupt __far IPX_ISR(union INTPACK ip)
 	RestoreStack();
 }
 
+extern void IPXTrampolineASM();
+#pragma aux IPXTrampolineASM = \
+	"int 0x7a"
+
+static void __far IPXTrampoline(void)
+{
+	// For the trampoline function we just invoke the actual interrupt.
+	// This is the laziest possible implementation of this function.
+	IPXTrampolineASM();
+}
+
 static void __interrupt __far RedirectorISR(union INTPACK ip)
 {
+	// There are two entrypoints to the IPX API. One is the 0x7a interrupt,
+	// and the other is via the redirector which sets es:di to the
+	// location of a routine to jump to.
 	if (ip.w.ax == 0x7a00) {
 		ip.h.al = 0xff;
+		ip.w.es = FP_SEG(IPXTrampoline);
+		ip.w.di = FP_OFF(IPXTrampoline);
 		return;
 	}
 
