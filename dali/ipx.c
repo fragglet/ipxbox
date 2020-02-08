@@ -31,7 +31,7 @@
 #define IPX_CMD_SPX_INSTALLED 0x0010
 #define IPX_CMD_GET_MTU       0x001a
 
-#define MTU 576
+#define MTU 1500
 
 struct ipx_socket {
 	unsigned short socket;
