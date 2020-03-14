@@ -8,3 +8,5 @@ communicate with physical IPX nodes on the connected network. So emulated DOS
 clients should be able to play games against real DOS machines connected to
 the same network.
 
+For some setup instructions, see the [HOWTO](HOWTO.md).
+
