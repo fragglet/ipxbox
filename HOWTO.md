@@ -103,4 +103,46 @@ $ systemctl --user status ipxbox.service
            └─5383 /home/jonny/ipxbox/ipxbox
 ```
 
+## Advanced topic: setting up an IPX network bridge
 
+`ipxbox` by default just acts as a forwarding server between DOSbox clients,
+but it can be configured to bridge to a real network.
+
+First, a word of warning: the DOSBox IPX protocol is completely insecure.
+There's no encryption or authentication supported. If all you're doing is
+playing some old DOS games maybe that's fine, but be aware that it's possible
+to piggyback Windows 9x filesharing on top of IPX, so there's a possibility
+that you might be making things available to the world that you don't intend.
+If you're looking to use this for anything more serious than just games, look
+into setting up proper VPN software.
+
+There are two ways to set things up: `ipxbox` can either create a TAP device
+(use `--enable_tap`) or use `libpcap` to connect to a real Ethernet device.
+If you don't know what this means, you'll want to use the `libpcap` approach.
+
+Find out which Ethernet interface (network card) you want to use by using the
+Linux `ifconfig` command. Usually the interface will be named something like
+`eth0` but it can vary sometimes.
+
+Programs don't usually have the permission to do raw network access. You'll
+need to grant it to the `ipxbox` binary:
+```
+sudo setcap cap_net_raw,cap_net_admin=eip ./ipxbox
+```
+Then run `ipxbox` with the `--pcap_device` argument, eg.
+```
+./ipxbox --port=10000 --pcap_device=eth0
+```
+If working correctly, clients connecting to the server will now be bridged to
+`eth0`. You can test this using `tcpdump` to listen for IPX packets and
+checking if you see any when a client is connected.
+```
+$ sudo tcpdump -nli eth0 ipx
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+05:08:38.891724 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
+05:08:43.886672 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
+05:08:47.890883 IPX 00000000.02:cf:0d:86:54:e5.4002 > 00000000.ff:ff:ff:ff:ff:ff.6590: ipx-#6590 16
+05:08:48.529183 IPX 00000000.02:cf:0d:86:54:e5.4002 > 00000000.ff:ff:ff:ff:ff:ff.6590: ipx-#6590 16
+05:08:48.888311 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
+```
