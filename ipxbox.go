@@ -29,6 +29,7 @@ var (
 	port            = flag.Int("port", 10000, "UDP port to listen on.")
 	clientTimeout   = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
 	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
+	allowNetBIOS    = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 )
 
 func printPackets(v *virtual.Network) {
@@ -63,6 +64,7 @@ func main() {
 	cfg = *server.DefaultConfig
 	cfg.ClientTimeout = *clientTimeout
 	v := virtual.New()
+	v.BlockNetBIOS = !*allowNetBIOS
 	if *enableTap {
 		p, err := phys.New(water.Config{})
 		if err != nil {
