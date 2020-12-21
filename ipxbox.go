@@ -66,7 +66,7 @@ func main() {
 	v := virtual.New()
 	v.BlockNetBIOS = !*allowNetBIOS
 	if *enableTap {
-		p, err := phys.New(water.Config{})
+		p, err := phys.NewTap(water.Config{}, framer)
 		if err != nil {
 			log.Fatalf("failed to start tap: %v", err)
 		}
