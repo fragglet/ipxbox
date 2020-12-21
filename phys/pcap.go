@@ -15,8 +15,17 @@ var (
 	_ = (io.ReadWriteCloser)(&PcapPhys{})
 )
 
+// packetDuplexStream represents the concept of a two-way stream of packets
+// where packets can be both read from and written to the stream.
+type packetDuplexStream interface {
+	gopacket.PacketDataSource
+
+	Close()
+	WritePacketData([]byte) error
+}
+
 type PcapPhys struct {
-	handle *pcap.Handle
+	stream packetDuplexStream
 	ps     *gopacket.PacketSource
 	framer Framer
 }
@@ -27,14 +36,14 @@ func NewPcap(handle *pcap.Handle, framer Framer) (*PcapPhys, error) {
 	}
 	ps := gopacket.NewPacketSource(handle, handle.LinkType())
 	return &PcapPhys{
-		handle: handle,
+		stream: handle,
 		ps:     ps,
 		framer: framer,
 	}, nil
 }
 
 func (p *PcapPhys) Close() error {
-	p.handle.Close()
+	p.stream.Close()
 	return nil
 }
 
@@ -73,7 +82,7 @@ func (p *PcapPhys) Write(packet []byte) (int, error) {
 		return 0, err
 	}
 	gopacket.SerializeLayers(buf, opts, layers...)
-	if err := p.handle.WritePacketData(buf.Bytes()); err != nil {
+	if err := p.stream.WritePacketData(buf.Bytes()); err != nil {
 		return 0, err
 	}
 	return len(packet), nil
