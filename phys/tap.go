@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"github.com/songgao/packets/ethernet"
 	"github.com/songgao/water"
+)
+
+var (
+	_ = (packetDuplexStream)(&tapWrapper{})
 )
 
 // tapWrapper implements the packetDuplexStream interface by wrapping a
@@ -43,18 +46,12 @@ func (w *tapWrapper) Close() {
 }
 
 // NewTap creates a new physical IPX interface using a kernel TAP interface.
-func NewTap(cfg water.Config, framer Framer) (*PcapPhys, error) {
+func NewTap(cfg water.Config, framer Framer) (*Phys, error) {
 	cfg.DeviceType = water.TAP
 
 	ifce, err := water.New(cfg)
 	if err != nil {
 		return nil, err
 	}
-	tw := &tapWrapper{ifce}
-	ps := gopacket.NewPacketSource(tw, layers.LinkTypeEthernet)
-	return &PcapPhys{
-		stream: tw,
-		ps:     ps,
-		framer: framer,
-	}, nil
+	return newPhys(&tapWrapper{ifce}, framer), nil
 }
