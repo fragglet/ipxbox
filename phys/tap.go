@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	_ = (packetDuplexStream)(&tapWrapper{})
+	_ = (DuplexEthernetStream)(&tapWrapper{})
 )
 
-// tapWrapper implements the packetDuplexStream interface by wrapping a
+// tapWrapper implements the DuplexEthernetStream interface by wrapping a
 // water.Interface.
 type tapWrapper struct {
 	ifce *water.Interface
@@ -46,12 +46,12 @@ func (w *tapWrapper) Close() {
 }
 
 // NewTap creates a new physical IPX interface using a kernel TAP interface.
-func NewTap(cfg water.Config, framer Framer) (*Phys, error) {
+func NewTap(cfg water.Config) (*tapWrapper, error) {
 	cfg.DeviceType = water.TAP
 
 	ifce, err := water.New(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return newPhys(&tapWrapper{ifce}, framer), nil
+	return &tapWrapper{ifce}, nil
 }

@@ -66,10 +66,11 @@ func main() {
 	v := virtual.New()
 	v.BlockNetBIOS = !*allowNetBIOS
 	if *enableTap {
-		p, err := phys.NewTap(water.Config{}, framer)
+		stream, err := phys.NewTap(water.Config{})
 		if err != nil {
 			log.Fatalf("failed to start tap: %v", err)
 		}
+		p := phys.NewPhys(stream, framer)
 		tap := v.Tap()
 		go bridge.Run(tap, tap, p, p)
 	} else if *pcapDevice != "" {
@@ -78,10 +79,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to open pcap: %v", err)
 		}
-		p, err := phys.NewPcap(handle, framer)
-		if err != nil {
-			log.Fatalf("failed to create pcap physical wrapper: %v", err)
+		if err := handle.SetBPFFilter("ipx"); err != nil {
+			log.Fatalf("failed to set filter: %v", err)
 		}
+		p := phys.NewPhys(handle, framer)
 		tap := v.Tap()
 		go bridge.Run(tap, tap, p, p)
 	}

@@ -15,17 +15,19 @@ var (
 	_ = (io.ReadWriteCloser)(&Phys{})
 )
 
-// packetDuplexStream represents the concept of a two-way stream of packets
-// where packets can be both read from and written to the stream.
-type packetDuplexStream interface {
+// DuplexEthernetStream extends gopacket.PacketDataSource to an interface
+// where packets can be both read and written.
+type DuplexEthernetStream interface {
 	gopacket.PacketDataSource
 
 	Close()
 	WritePacketData([]byte) error
 }
 
+// Phys implements the Reader and Writer interfaces to allow IPX packets to
+// be read from and written to a physical network interface.
 type Phys struct {
-	stream packetDuplexStream
+	stream DuplexEthernetStream
 	ps     *gopacket.PacketSource
 	framer Framer
 }
@@ -76,7 +78,7 @@ func (p *Phys) Write(packet []byte) (int, error) {
 	return len(packet), nil
 }
 
-func newPhys(stream packetDuplexStream, framer Framer) *Phys {
+func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
 	return &Phys{
 		stream: stream,
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
