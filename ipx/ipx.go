@@ -41,7 +41,7 @@ var (
 	AddrNull      = Addr([6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	AddrBroadcast = Addr([6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
 
-	minHeaderLength        = 30
+	HeaderLength           = 30
 	minHeaderAddressLength = 12
 )
 
@@ -76,8 +76,8 @@ func (a *HeaderAddr) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary decodes an IPX header from a slice of bytes.
 func (h *Header) UnmarshalBinary(packet []byte) error {
-	if len(packet) < minHeaderLength {
-		return fmt.Errorf("IPX header too short to decode: %d < %d", len(packet), minHeaderLength)
+	if len(packet) < HeaderLength {
+		return fmt.Errorf("IPX header too short to decode: %d < %d", len(packet), HeaderLength)
 	}
 
 	h.Checksum = uint16((packet[0] << 8) | packet[1])
