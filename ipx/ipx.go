@@ -60,7 +60,7 @@ func (a *HeaderAddr) UnmarshalBinary(data []byte) error {
 	}
 	copy(a.Network[0:], data[0:4])
 	copy(a.Addr[0:], data[4:10])
-	a.Socket = uint16((data[10] << 8) | data[11])
+	a.Socket = (uint16(data[10]) << 8) | uint16(data[11])
 	return nil
 }
 
