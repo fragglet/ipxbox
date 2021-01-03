@@ -95,6 +95,9 @@ func (r *Router) WritePacketData(frame []byte) error {
 		Length:   uint16(ipx.HeaderLength + HeaderLength + trailBytes + len(frame)),
 		Checksum: 0xffff,
 	}
+	// TODO: Hardware address from Ethernet frame may not match the IPX
+	// address to forward to. This needs a routing table implementation
+	// equivalent to what ipxpkt does.
 	copy(hdr1.Dest.Addr[:], frame[0:6])
 	data, err := hdr1.MarshalBinary()
 	if err != nil {
