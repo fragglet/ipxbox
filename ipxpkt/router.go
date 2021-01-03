@@ -1,3 +1,5 @@
+// Package ipxpkt implements a packet router that wraps Ethernet frames in
+// IPX packets using the protocol from the IPXPKT.COM DOS packet driver.
 package ipxpkt
 
 import (
@@ -20,6 +22,9 @@ var (
 	_ = (phys.DuplexEthernetStream)(&Router{})
 )
 
+// Router implements the ipxpkt protocol and implements the same
+// DuplexEthernetStream interface as a real physical Ethernet link;
+// it communicates by sending and receiving IPX packets.
 type Router struct {
 	node          network.Node
 	packetCounter uint16
