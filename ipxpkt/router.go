@@ -35,7 +35,7 @@ func (r *Router) unwrapFrame(packet []byte) ([]byte, error) {
 		return nil, err
 	}
 	if ipxHeader.Dest.Socket != ipxSocket {
-		return nil, fmt.Errorf("not an ipxpkt fragment; destination socket %d != %s", ipxHeader.Dest.Socket, ipxSocket)
+		return nil, fmt.Errorf("not an ipxpkt fragment; destination socket %d != %d", ipxHeader.Dest.Socket, ipxSocket)
 	}
 	packet = packet[ipx.HeaderLength:]
 
