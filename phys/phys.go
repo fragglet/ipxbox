@@ -5,6 +5,7 @@ package phys
 import (
 	"io"
 	"net"
+	"sync"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/google/gopacket"
@@ -84,4 +85,44 @@ func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
 		framer: framer,
 	}
+}
+
+// copyLoop reads packets from a and writes them to b.
+func copyLoop(a, b DuplexEthernetStream) error {
+	for {
+		frame, _, err := a.ReadPacketData()
+		switch {
+		case err == io.EOF:
+			return nil
+		case err != nil:
+			return err
+		}
+		if err := b.WritePacketData(frame); err != nil {
+			return err
+		}
+	}
+}
+
+// CopyFrames starts a background process that copies packets between the
+// given two streams.
+func CopyFrames(a, b DuplexEthernetStream) error {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	var err1, err2 error
+	go func() {
+		err1 = copyLoop(a, b)
+		wg.Done()
+	}()
+	go func() {
+		err2 = copyLoop(b, a)
+		wg.Done()
+	}()
+	wg.Wait()
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
+		return err2
+	}
+	return nil
 }
