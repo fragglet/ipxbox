@@ -31,9 +31,16 @@ type Phys struct {
 	stream DuplexEthernetStream
 	ps     *gopacket.PacketSource
 	framer Framer
+	nonIPX *nonIPX
+	mu     sync.Mutex
 }
 
 func (p *Phys) Close() error {
+	p.mu.Lock()
+	if p.nonIPX != nil {
+		p.nonIPX.Close()
+	}
+	p.mu.Unlock()
 	p.stream.Close()
 	return nil
 }
@@ -54,6 +61,12 @@ func (p *Phys) Read(result []byte) (int, error) {
 			}
 			copy(result[:cnt], payload[:cnt])
 			return cnt, nil
+		} else {
+			p.mu.Lock()
+			if p.nonIPX != nil {
+				p.nonIPX.frames <- pkt
+			}
+			p.mu.Unlock()
 		}
 	}
 }
@@ -77,6 +90,45 @@ func (p *Phys) Write(packet []byte) (int, error) {
 		return 0, err
 	}
 	return len(packet), nil
+}
+
+// NonIPX returns a DuplexEthernetStream from which all non-IPX Ethernet frames
+// will be returned by ReadPacketData().
+func (p *Phys) NonIPX() DuplexEthernetStream {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.nonIPX == nil {
+		p.nonIPX = &nonIPX{
+			phys:   p,
+			frames: make(chan gopacket.Packet),
+		}
+	}
+	return p.nonIPX
+}
+
+type nonIPX struct {
+	phys   *Phys
+	frames chan gopacket.Packet
+}
+
+func (ni *nonIPX) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
+	pkt, ok := <-ni.frames
+	if !ok {
+		return nil, gopacket.CaptureInfo{}, io.EOF
+	}
+	return pkt.Data(), pkt.Metadata().CaptureInfo, nil
+}
+
+func (ni *nonIPX) WritePacketData(frame []byte) error {
+	// Write is just a passthrough to the underlying stream.
+	return ni.phys.stream.WritePacketData(frame)
+}
+
+func (ni *nonIPX) Close() {
+	ni.phys.mu.Lock()
+	close(ni.frames)
+	ni.phys.nonIPX = nil
+	ni.phys.mu.Unlock()
 }
 
 func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
