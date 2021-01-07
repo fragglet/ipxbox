@@ -97,40 +97,47 @@ func (r *Router) WritePacketData(frame []byte) error {
 			// Addr: - is set below
 			Socket: ipxSocket,
 		},
-		Length:   uint16(ipx.HeaderLength + HeaderLength + trailBytes + len(frame)),
 		Checksum: 0xffff,
 	}
 	// TODO: Hardware address from Ethernet frame may not match the IPX
 	// address to forward to. This needs a routing table implementation
 	// equivalent to what ipxpkt does.
 	copy(hdr1.Dest.Addr[:], frame[0:6])
-	data, err := hdr1.MarshalBinary()
-	if err != nil {
-		return err
-	}
 
-	// TODO: Support non-trail version of ipxpkt
-	var trail [trailBytes]byte
-	data = append(data, trail[:]...)
+	r.packetCounter++
+	fragments := fragmentFrame(frame)
 
 	// TODO: fragmentation for large packets
 	hdr2 := &Header{
-		Fragment:     1,
-		NumFragments: 1,
+		NumFragments: uint8(len(fragments)),
 		PacketID:     r.packetCounter,
 	}
-	data2, err := hdr2.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	r.packetCounter++
 
-	data = append(data, data2...)
-	data = append(data, frame...)
-	if _, err := r.node.Write(data); err != nil {
-		// Failure here is not necessarily an error; there may just not
-		// be any appropriate destination for the packet.
-		//return err
+	for fragIndex, frag := range fragments {
+		hdr1.Length = uint16(ipx.HeaderLength + HeaderLength + trailBytes + len(frag))
+		data, err := hdr1.MarshalBinary()
+		if err != nil {
+			return err
+		}
+
+		// TODO: Support non-trail version of ipxpkt
+		var trail [trailBytes]byte
+		data = append(data, trail[:]...)
+
+		hdr2.Fragment = uint8(fragIndex + 1)
+		data2, err := hdr2.MarshalBinary()
+		if err != nil {
+			return err
+		}
+
+		data = append(data, data2...)
+		data = append(data, frag...)
+		if _, err := r.node.Write(data); err != nil {
+			// Failure here is not necessarily an error; there may
+			// not be any appropriate destination for the packet.
+			// But don't bother sending the other fragments.
+			return nil
+		}
 	}
 	return nil
 }
