@@ -28,6 +28,7 @@ var (
 type Router struct {
 	node          network.Node
 	packetCounter uint16
+	fr            frameReassembler
 }
 
 func (r *Router) Close() {
@@ -54,11 +55,11 @@ func (r *Router) unwrapFrame(packet []byte) ([]byte, error) {
 	if err := hdr.UnmarshalBinary(packet); err != nil {
 		return nil, err
 	}
-	// TODO: Fragment reassembly
-	if hdr.Fragment != 1 || hdr.NumFragments != 1 {
-		return nil, fmt.Errorf("fragment reassembly not implemented yet")
+	frame, complete := r.fr.reassemble(&ipxHeader, &hdr, packet[HeaderLength:])
+	if !complete {
+		return nil, fmt.Errorf("incomplete frame")
 	}
-	return packet[HeaderLength:], nil
+	return frame, nil
 }
 
 // readFrame reads an Ethernet frame from the router; it will block until
@@ -146,5 +147,6 @@ func NewRouter(node network.Node) *Router {
 	r := &Router{
 		node: node,
 	}
+	r.fr.init()
 	return r
 }
