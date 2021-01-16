@@ -45,10 +45,6 @@ type Server struct {
 }
 
 var (
-	// UnknownClientError is returned by Server.Write() if the destination
-	// MAC address is not associated with any known client.
-	UnknownClientError = errors.New("unknown destination address")
-
 	DefaultConfig = &Config{
 		ClientTimeout: 10 * time.Minute,
 		KeepaliveTime: 5 * time.Second,
