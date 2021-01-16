@@ -146,3 +146,95 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 05:08:48.529183 IPX 00000000.02:cf:0d:86:54:e5.4002 > 00000000.ff:ff:ff:ff:ff:ff.6590: ipx-#6590 16
 05:08:48.888311 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
 ```
+## Advanced topic: IPX packet driver routing
+
+Much DOS software that communicates over the network (particularly using the
+TCP/IP protocol stack used on the Internet) uses the
+[packet driver](https://en.wikipedia.org/wiki/PC/TCP_Packet_Driver) interface.
+There are packet drivers available for most network cards, providing a
+standard interface for sending and receiving data over the network.
+
+Some forks of DOSbox can emulate the Novell NE2000 card, allowing such
+software to be used. However, vanilla DOSbox at the time of writing does not
+include this feature. Furthermore, it typically requires granting DOSbox
+special permission to be able to send and receive raw network packets.
+The [`ipxpkt.com`](ipxpkt/driver/) driver is a packet driver that tunnels an
+Ethernet link over IPX packets, and ipxbox includes support for its protocol.
+This allows DOSbox users to use packet driver-based software.
+
+**First, a word of warning**: the DOSBox IPX protocol is completely insecure.
+There's no encryption or authentication supported, and enabling this feature
+gives a potential backdoor into the network where the ipxbox server is running.
+If you don't understand the implications of this, don't enable this feature
+on a public-facing ipxbox server.
+
+To use this feature:
+
+1. First set up an IPX bridge by following the instructions from the previous
+section.
+
+2. Read the warning in the paragraph above this list. Then add
+`--enable_ipxpkt` to the ipxbox command line. For example:
+```
+./ipxbox --port=10000 --pcap_device=eth0 --enable_ipxpkt
+```
+3. Start a DOSbox client and connect to the server as normal. Make sure to
+mount a directory containing the [`ipxpkt.com`](ipxpkt/driver/) driver.
+
+4. Start the packet driver as shown:
+```
+C:\>ipxpkt -i 0x60
+
+Packet driver for IPX, version 11.3
+Portions Copyright 1990, P. Kranenburg
+Packet driver skeleton copyright 1988-93, Crynwr Software.
+This program is freely copyable; source must be available; NO WARRANTY.
+See the file COPYING.DOC for details; send FAX to +1-315-268-9201 for a copy.
+
+This may take up to 30 seconds...
+System: [345]86 processor, ISA bus, Two 8259s
+Packet driver software interrupt is 0x60 (96)
+My Ethernet address is 02:57:04:31:68:FA
+
+C:\>
+```
+5. Test the connection is working correctly by trying some software that uses
+the packet driver interface. The [mTCP stack](http://www.brutman.com/mTCP/)
+makes for a good first step. For example:
+```
+C:\>set mtcpcfg=c:\mtcp\mtcp.cfg
+C:\>dhcp
+
+mTCP DHCP Client by M Brutman (mbbrutman@gmail.com) (C)opyright 2008-2020
+Version: Mar  7 2020
+
+Timeout per request: 10 seconds, Retry attempts: 3
+Sending DHCP requests, Press [ESC] to abort.
+
+DHCP request sent, attempt 1: Offer received, Acknowledged
+
+Good news everyone!
+
+IPADDR 192.168.128.45
+NETMASK 255.255.0.0
+GATEWAY 192.168.60.1
+NAMESERVER 8.8.8.8
+LEASE_TIME 86400 seconds
+
+Settings written to 'c:\mtcp\mtcp.cfg'
+
+C:\>ping 8.8.8.8
+
+mTCP Ping by M Brutman (mbbrutman@gmail.com) (C)opyright 2009-2020
+Version: Mar  7 2020
+
+ICMP Packet payload is 32 bytes.
+
+Packet sequence number 0 received in 45.90 ms, ttl=114
+Packet sequence number 1 received in 44.20 ms, ttl=114
+Packet sequence number 2 received in 41.65 ms, ttl=114
+Packet sequence number 3 received in 54.40 ms, ttl=114
+
+Packets sent: 4, Replies received: 4, Replies lost: 0
+Average time for a reply: 46.53 ms (not counting lost packets)
+```
