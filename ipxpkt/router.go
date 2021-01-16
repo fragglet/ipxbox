@@ -108,7 +108,6 @@ func (r *Router) WritePacketData(frame []byte) error {
 	r.packetCounter++
 	fragments := fragmentFrame(frame)
 
-	// TODO: fragmentation for large packets
 	hdr2 := &Header{
 		NumFragments: uint8(len(fragments)),
 		PacketID:     r.packetCounter,
