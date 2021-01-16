@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	// TODO: Determine the correct maximum value to use here.
-	maxFragmentPayload = 400
+	// This should match the maximum used by ipxpkt.com:
+	maxFragmentPayload = 510
 
 	// maxFrames is the maximum number of frames we store for reassembly
 	// at any given time.
