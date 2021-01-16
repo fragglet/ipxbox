@@ -1,12 +1,18 @@
 `ipxbox` is a standalone DOSBox IPX server written in Go. DOSBox clients can
 connect to the server and play together.
 
-A unique feature is that it is optionally able to bridge to real physical
-networks, in a manner similar to a VPN. DOSBox clients can communicate with
-each other on the server, but with this feature enabled they can also
-communicate with physical IPX nodes on the connected network. So emulated DOS
-clients should be able to play games against real DOS machines connected to
-the same network.
+Features:
+
+* Sends background keepalive pings to idle clients to prevent users behind
+NAT routers from being timed out.
+
+* TUN/TAP and libpcap integration that allows the server to be bridged to a
+real, physical network. This allows (emulated) dosbox users to play alongside
+users on real DOS machines.
+
+* Support for the `ipxpkt.com` packet driver protocol, allowing software that
+uses the packet driver interface to get a network connection over dosbox's
+built-in IPX protocol support.
 
 For some setup instructions, see the [HOWTO](HOWTO.md).
 
