@@ -108,13 +108,12 @@ $ systemctl --user status ipxbox.service
 `ipxbox` by default just acts as a forwarding server between DOSbox clients,
 but it can be configured to bridge to a real network.
 
-First, a word of warning: the DOSBox IPX protocol is completely insecure.
-There's no encryption or authentication supported. If all you're doing is
-playing some old DOS games maybe that's fine, but be aware that it's possible
-to piggyback Windows 9x filesharing on top of IPX, so there's a possibility
-that you might be making things available to the world that you don't intend.
-If you're looking to use this for anything more serious than just games, look
-into setting up proper VPN software.
+**First, a word of warning**: the DOSBox IPX protocol is completely insecure.
+There's no encryption or authentication supported. For this reason, by default
+ipxbox blocks the IPX ports associated with Windows filesharing. There's not
+a lot of damage you can do with the IPX protocol nowadays but there's still the
+possibility that if you use this on a public server, you might be exposing
+something on your network that you don't intend to.
 
 There are two ways to set things up: `ipxbox` can either create a TAP device
 (use `--enable_tap`) or use `libpcap` to connect to a real Ethernet device.
