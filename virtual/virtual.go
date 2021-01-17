@@ -43,11 +43,13 @@ var (
 
 	// Well-known IPX ports used for NetBIOS/SMB.
 	netbiosPorts = map[uint16]bool{
-		0x451: true, // NCP
-		0x452: true, // SAP
-		0x453: true, // RIP
-		0x455: true, // NetBIOS
-		0x553: true, // NWLink datagram, may contain SMB
+		0x451:  true, // NCP
+		0x452:  true, // SAP
+		0x453:  true, // RIP
+		0x455:  true, // NetBIOS
+		0x553:  true, // NWLink datagram, may contain SMB
+		0x900F: true, // SNMP over IPX, RFC 1298
+		0x9010: true, // SNMP over IPX, RFC 1298
 	}
 
 	// UnknownNodeError is returned by Network.Write() if the destination
