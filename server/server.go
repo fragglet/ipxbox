@@ -2,6 +2,7 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -29,12 +30,19 @@ type Config struct {
 	Logger *log.Logger
 }
 
+type clientStatistics struct {
+	rxPackets, txPackets uint64
+	rxBytes, txBytes     uint64
+	connectTime          time.Time
+}
+
 // client represents a client that is connected to an IPX server.
 type client struct {
 	addr            *net.UDPAddr
 	node            network.Node
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
+	stats           clientStatistics
 }
 
 // Server is the top-level struct representing an IPX server that listens
@@ -59,6 +67,15 @@ var (
 
 	_ = (io.Closer)(&Server{})
 )
+
+func (cs *clientStatistics) String() string {
+	result := fmt.Sprintf("connected for %s; ", time.Since(cs.connectTime))
+	result += fmt.Sprintf("received %d packets (%d bytes), ",
+		cs.rxPackets, cs.rxBytes)
+	result += fmt.Sprintf("sent %d packets (%d bytes)",
+		cs.txPackets, cs.txBytes)
+	return result
+}
 
 // New creates a new Server, listening on the given address.
 func New(addr string, n network.Network, c *Config) (*Server, error) {
@@ -90,6 +107,8 @@ func (s *Server) runClient(c *client) {
 		switch {
 		case err == nil:
 			s.socket.WriteToUDP(buf[0:packetLen], c.addr)
+			c.stats.txPackets++
+			c.stats.txBytes += uint64(packetLen)
 		case err == io.EOF:
 			return
 		default:
@@ -110,10 +129,14 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	c, ok := s.clients[addrStr]
 
 	if !ok {
+		now := time.Now()
 		c = &client{
 			addr:            addr,
-			lastReceiveTime: time.Now(),
+			lastReceiveTime: now,
 			node:            s.net.NewNode(),
+			stats: clientStatistics{
+				connectTime: now,
+			},
 		}
 
 		s.clients[addrStr] = c
@@ -168,6 +191,11 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 	if header.Src.Addr != srcClient.node.Address() {
 		return
 	}
+
+	// Update statistics.
+	srcClient.stats.rxPackets++
+	srcClient.stats.rxBytes += uint64(len(packet))
+
 	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
 	srcClient.node.Write(packet)
@@ -230,8 +258,10 @@ func (s *Server) checkClientTimeouts() time.Time {
 		// Nothing received in a long time? Time out the connection.
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
-			s.log("client %s (IPX address %s) timed out: nothing received since %s",
-				addrStr, c.node.Address(), c.lastReceiveTime)
+			s.log(("client %s (IPX address %s) timed out: " +
+				"nothing received since %s. %s"),
+				addrStr, c.node.Address(), c.lastReceiveTime,
+				&c.stats)
 			delete(s.clients, c.addr.String())
 			c.node.Close()
 		}
