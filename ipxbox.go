@@ -10,6 +10,7 @@ import (
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/server"
+	"github.com/fragglet/ipxbox/syslog"
 	"github.com/fragglet/ipxbox/virtual"
 
 	"github.com/google/gopacket/pcap"
@@ -32,6 +33,7 @@ var (
 	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
 	allowNetBIOS    = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableIpxpkt    = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
+	enableSyslog    = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 )
 
 func printPackets(v *virtual.Network) {
@@ -84,6 +86,15 @@ func main() {
 	cfg.ClientTimeout = *clientTimeout
 	v := virtual.New()
 	v.BlockNetBIOS = !*allowNetBIOS
+
+	if *enableSyslog {
+		var err error
+		cfg.Logger, err = syslog.NewLogger(
+			syslog.LOG_NOTICE|syslog.LOG_DAEMON, 0)
+		if err != nil {
+			log.Fatalf("failed to init syslog: %v", err)
+		}
+	}
 
 	stream, err := ethernetStream()
 	if err != nil {

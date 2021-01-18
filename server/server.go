@@ -3,6 +3,7 @@ package server
 
 import (
 	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -22,6 +23,10 @@ type Config struct {
 	// packets on particular ports if nothing is received for a while.
 	// This controls the time for keepalives.
 	KeepaliveTime time.Duration
+
+	// If not nil, log entries are written as clients connect and
+	// disconnect.
+	Logger *log.Logger
 }
 
 // client represents a client that is connected to an IPX server.
@@ -93,6 +98,12 @@ func (s *Server) runClient(c *client) {
 	}
 }
 
+func (s *Server) log(format string, args ...interface{}) {
+	if s.config.Logger != nil {
+		s.config.Logger.Printf(format, args...)
+	}
+}
+
 // newClient processes a registration packet, adding a new client if necessary.
 func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 	addrStr := addr.String()
@@ -106,6 +117,8 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 		}
 
 		s.clients[addrStr] = c
+		s.log("new connection from %s, assigned IPX address %s",
+			addrStr, c.node.Address())
 		go s.runClient(c)
 	}
 
@@ -196,7 +209,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 	// might connect in the mean time.
 	nextCheckTime := now.Add(10 * time.Second)
 
-	for _, c := range s.clients {
+	for addrStr, c := range s.clients {
 		// Nothing sent in a while? Send a keepalive.
 		// This is important because some types of game use a
 		// client/server type arrangement where the server does not
@@ -217,6 +230,8 @@ func (s *Server) checkClientTimeouts() time.Time {
 		// Nothing received in a long time? Time out the connection.
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
+			s.log("client %s (IPX address %s) timed out: nothing received since %s",
+				addrStr, c.node.Address(), c.lastReceiveTime)
 			delete(s.clients, c.addr.String())
 			c.node.Close()
 		}

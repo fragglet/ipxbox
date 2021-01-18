@@ -14,5 +14,7 @@ users on real DOS machines.
 uses the packet driver interface to get a network connection over dosbox's
 built-in IPX protocol support.
 
+* Syslog integration for audit logging when running a public server.
+
 For some setup instructions, see the [HOWTO](HOWTO.md).
 
