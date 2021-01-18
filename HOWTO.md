@@ -75,7 +75,7 @@ cat >~/.config/systemd/user/ipxbox.service <<END
 Description=DOSbox dedicated server
 
 [Service]
-ExecStart=/home/jonny/ipxbox/ipxbox
+ExecStart=/home/jonny/ipxbox/ipxbox --enable_syslog
 Restart=on-failure
 
 [Install]
