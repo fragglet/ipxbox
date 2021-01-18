@@ -70,7 +70,7 @@ First create a `systemd` configuration file. You'll need to point the
 `ExecStart` path at your executable.
 ```
 mkdir -p ~/.config/systemd/user
-echo >~/.config/systemd/user/ipxbox.service <<END
+cat >~/.config/systemd/user/ipxbox.service <<END
 [Unit]
 Description=DOSbox dedicated server
 
