@@ -5,10 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
+	"strings"
 
 	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/phys"
+	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/syslog"
 	"github.com/fragglet/ipxbox/virtual"
@@ -34,6 +37,7 @@ var (
 	allowNetBIOS    = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableIpxpkt    = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
 	enableSyslog    = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
+	quakeServers    = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
 )
 
 func printPackets(v *virtual.Network) {
@@ -78,6 +82,32 @@ func ethernetStream() (phys.DuplexEthernetStream, error) {
 	return handle, nil
 }
 
+func addQuakeProxies(v *virtual.Network) error {
+	if *quakeServers == "" {
+		return nil
+	}
+	errors := []string{}
+	addresses := []*net.UDPAddr{}
+	for _, s := range strings.Split(*quakeServers, ",") {
+		udpAddr, err := net.ResolveUDPAddr("udp", s)
+		if err != nil {
+			errors = append(errors, err.Error())
+		} else {
+			addresses = append(addresses, udpAddr)
+		}
+	}
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to resolve some Quake servers: %v", strings.Join(errors, ","))
+	}
+	for _, udpAddr := range addresses {
+		p := qproxy.New(&qproxy.Config{
+			Address: *udpAddr,
+		}, v.NewNode())
+		go p.Run()
+	}
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -116,7 +146,7 @@ func main() {
 	if *dumpPackets {
 		go printPackets(v)
 	}
-
+	addQuakeProxies(v)
 	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
 	if err != nil {
 		log.Fatal(err)
