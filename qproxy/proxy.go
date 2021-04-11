@@ -4,6 +4,7 @@ package qproxy
 
 import (
 	"io"
+	"log"
 	"net"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -28,8 +29,11 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 	var buf [1500]byte
 	for {
 		n, err := c.conn.Read(buf[:])
-		if err != nil {
-			// TODO: log
+		switch {
+		case err == io.EOF:
+			return
+		case err != nil:
+			log.Printf("error receiving UDP packets for connection to %v: %v", c.conn.RemoteAddr(), err)
 			return
 		}
 		hdr := &ipx.Header{
@@ -42,14 +46,15 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		}
 		pktBytes, err := hdr.MarshalBinary()
 		if err != nil {
-			// TODO: log
+			log.Printf("error marshalling IPX packet: %v", err)
 			continue
 		}
 		zeroBytes := [quakeHeaderBytes]byte{}
 		pktBytes = append(pktBytes, zeroBytes[:]...)
 		pktBytes = append(pktBytes, buf[:n]...)
 		if _, err := p.node.Write(pktBytes); err != nil {
-			// TODO: log
+			// TODO: close connection?
+			return
 		}
 	}
 }
@@ -74,17 +79,18 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 }
 
 func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
-	conn, ok := p.conns[hdr.Src]
+	c, ok := p.conns[hdr.Src]
 	if !ok {
 		var err error
-		conn, err = p.newConnection(&hdr.Src)
+		c, err = p.newConnection(&hdr.Src)
 		if err != nil {
-			// TODO: log
+			log.Printf("failed to create new connection to %v: %v", p.config.Address, err)
 			return
 		}
 	}
-	if _, err := conn.conn.Write(pkt[ipx.HeaderLength+quakeHeaderBytes:]); err != nil {
-		// TODO: log
+	if _, err := c.conn.Write(pkt[ipx.HeaderLength+quakeHeaderBytes:]); err != nil {
+		log.Printf("failed to forward IPX packet to UDP server: %v", err)
+		c.conn.Close()
 	}
 }
 
