@@ -146,7 +146,9 @@ func main() {
 	if *dumpPackets {
 		go printPackets(v)
 	}
-	addQuakeProxies(v)
+	if err := addQuakeProxies(v); err != nil {
+		log.Fatal(err)
+	}
 	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
 	if err != nil {
 		log.Fatal(err)
