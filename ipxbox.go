@@ -101,7 +101,8 @@ func addQuakeProxies(v *virtual.Network) error {
 	}
 	for _, udpAddr := range addresses {
 		p := qproxy.New(&qproxy.Config{
-			Address: *udpAddr,
+			Address:     *udpAddr,
+			IdleTimeout: *clientTimeout,
 		}, v.NewNode())
 		go p.Run()
 	}

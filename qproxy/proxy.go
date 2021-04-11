@@ -6,23 +6,31 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
 )
 
 const (
-	quakeIPXSocket   = 26000
-	quakeHeaderBytes = 4
+	garbageCollectPeriod = 10 * time.Second
+	quakeIPXSocket       = 26000
+	quakeHeaderBytes     = 4
 )
 
 type Config struct {
 	// Address of Quake server.
 	Address net.UDPAddr
+
+	// IdleTimeout is the amount of time after which a connection is deleted.
+	IdleTimeout time.Duration
 }
 
 type connection struct {
-	conn *net.UDPConn
+	conn       *net.UDPConn
+	lastRXTime time.Time
+	closed     bool
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
@@ -30,12 +38,13 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 	for {
 		n, err := c.conn.Read(buf[:])
 		switch {
-		case err == io.EOF:
+		case c.closed:
 			return
 		case err != nil:
 			log.Printf("error receiving UDP packets for connection to %v: %v", c.conn.RemoteAddr(), err)
 			return
 		}
+		c.lastRXTime = time.Now()
 		hdr := &ipx.Header{
 			Length: uint16(n + ipx.HeaderLength + quakeHeaderBytes),
 			Dest:   *ipxAddr,
@@ -63,6 +72,7 @@ type Proxy struct {
 	config Config
 	node   network.Node
 	conns  map[ipx.HeaderAddr]*connection
+	mu     sync.Mutex
 }
 
 func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
@@ -71,14 +81,27 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 		return nil, err
 	}
 	c := &connection{
-		conn: conn,
+		conn:       conn,
+		lastRXTime: time.Now(),
 	}
 	p.conns[*ipxAddr] = c
 	go c.receivePackets(p, ipxAddr)
 	return c, nil
 }
 
+func (p *Proxy) closeConnection(addr *ipx.HeaderAddr) {
+	c, ok := p.conns[*addr]
+	if !ok {
+		return
+	}
+	c.closed = true
+	delete(p.conns, *addr)
+	c.conn.Close()
+}
+
 func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	c, ok := p.conns[hdr.Src]
 	if !ok {
 		var err error
@@ -88,13 +111,33 @@ func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
 			return
 		}
 	}
+	c.lastRXTime = time.Now()
 	if _, err := c.conn.Write(pkt[ipx.HeaderLength+quakeHeaderBytes:]); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
-		c.conn.Close()
+		p.closeConnection(&hdr.Src)
+	}
+}
+
+func (p *Proxy) garbageCollect() {
+	for {
+		time.Sleep(garbageCollectPeriod)
+		p.mu.Lock()
+		now := time.Now()
+		expiredConns := []ipx.HeaderAddr{}
+		for addr, c := range p.conns {
+			if now.Sub(c.lastRXTime) > p.config.IdleTimeout {
+				expiredConns = append(expiredConns, addr)
+			}
+		}
+		for _, addr := range expiredConns {
+			p.closeConnection(&addr)
+		}
+		p.mu.Unlock()
 	}
 }
 
 func (p *Proxy) Run() {
+	go p.garbageCollect()
 	var buf [1500]byte
 	for {
 		n, err := p.node.Read(buf[:])
