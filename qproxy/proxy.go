@@ -19,15 +19,15 @@ const (
 	quakeIPXSocket       = 26000
 	connectedIPXSocket   = 26001
 	quakeHeaderBytes     = 4
-	acceptHeaderLen = 9
+	acceptHeaderLen      = 9
 )
 
 var (
 	acceptHeaderBytes = []byte{
-		0x80,  // NETFLAG_CTL
+		0x80, // NETFLAG_CTL
 		0x00,
 		0x00, 0x09, // length=9
-		0x81,  // CCREP_ACCEPT
+		0x81, // CCREP_ACCEPT
 	}
 )
 
@@ -170,7 +170,7 @@ func (p *Proxy) processConnectedPacket(hdr *ipx.Header, pkt []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	c, ok := p.conns[hdr.Src]
-	if !ok || c.connectedPort < 0{
+	if !ok || c.connectedPort < 0 {
 		return
 	}
 	destAddress := &net.UDPAddr{
