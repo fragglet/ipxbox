@@ -19,6 +19,16 @@ const (
 	quakeIPXSocket       = 26000
 	connectedIPXSocket   = 26001
 	quakeHeaderBytes     = 4
+	acceptHeaderLen = 9
+)
+
+var (
+	acceptHeaderBytes = []byte{
+		0x80,  // NETFLAG_CTL
+		0x00,
+		0x00, 0x09, // length=9
+		0x81,  // CCREP_ACCEPT
+	}
 )
 
 type Config struct {
@@ -34,6 +44,26 @@ type connection struct {
 	lastRXTime    time.Time
 	connectedPort int
 	closed        bool
+}
+
+// handleAccept checks if a packet received from the main server port is a
+// CCREP_ACCEPT packet, and if so, reads the connected port number from the
+// packet, then replaces it with connectedIPXSocket.
+func (c *connection) handleAccept(packet []byte) {
+	if len(packet) != acceptHeaderLen {
+		return
+	}
+	if !bytes.Equal(acceptHeaderBytes, packet[:len(acceptHeaderBytes)]) {
+		return
+	}
+	// We have a legitimate looking CCREP_ACCEPT packet.
+	// The server has indicated the port number assigned for this
+	// connection as part of the packet.
+	c.connectedPort = (int(packet[5]) << 8) | int(packet[6])
+	// Before forwarding onto the IPX network, we must replace the UDP
+	// socket number with the connected IPX port number.
+	packet[5] = byte((connectedIPXSocket >> 8) & 0xff)
+	packet[6] = byte(connectedIPXSocket & 0xff)
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
@@ -57,6 +87,7 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		socket := uint16(connectedIPXSocket)
 		if addr.Port == p.config.Address.Port {
 			socket = uint16(quakeIPXSocket)
+			c.handleAccept(buf[:n])
 		} else if addr.Port != c.connectedPort {
 			continue
 		}
