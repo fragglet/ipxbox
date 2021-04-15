@@ -55,9 +55,9 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		// the port assigned to this connection. Map this into the IPX
 		// socket number for the source address.
 		socket := uint16(connectedIPXSocket)
-		if addr.Port != p.config.Address.Port {
+		if addr.Port == p.config.Address.Port {
 			socket = uint16(quakeIPXSocket)
-		} else if addr.Port == c.connectedPort {
+		} else if addr.Port != c.connectedPort {
 			continue
 		}
 		c.lastRXTime = time.Now()
