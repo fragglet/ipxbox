@@ -78,7 +78,7 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 			return
 		}
 		// Sanity check: packet must come from server's IP address.
-		if !bytes.Equal(addr.IP, p.config.Address.IP) {
+		if !addr.IP.Equal(p.config.Address.IP) {
 			continue
 		}
 		// Packet must come from either the server's main port or from
