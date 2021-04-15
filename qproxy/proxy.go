@@ -17,6 +17,7 @@ import (
 const (
 	garbageCollectPeriod = 10 * time.Second
 	quakeIPXSocket       = 26000
+	connectedIPXSocket   = 26001
 	quakeHeaderBytes     = 4
 )
 
@@ -29,9 +30,10 @@ type Config struct {
 }
 
 type connection struct {
-	conn       *net.UDPConn
-	lastRXTime time.Time
-	closed     bool
+	conn          *net.UDPConn
+	lastRXTime    time.Time
+	connectedPort int
+	closed        bool
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
@@ -49,13 +51,22 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		if !bytes.Equal(addr.IP, p.config.Address.IP) {
 			continue
 		}
+		// Packet must come from either the server's main port or from
+		// the port assigned to this connection. Map this into the IPX
+		// socket number for the source address.
+		socket := uint16(connectedIPXSocket)
+		if addr.Port != p.config.Address.Port {
+			socket = uint16(quakeIPXSocket)
+		} else if addr.Port == c.connectedPort {
+			continue
+		}
 		c.lastRXTime = time.Now()
 		hdr := &ipx.Header{
 			Length: uint16(n + ipx.HeaderLength + quakeHeaderBytes),
 			Dest:   *ipxAddr,
 			Src: ipx.HeaderAddr{
 				Addr:   p.node.Address(),
-				Socket: quakeIPXSocket,
+				Socket: socket,
 			},
 		}
 		pktBytes, err := hdr.MarshalBinary()
@@ -86,8 +97,9 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 		return nil, err
 	}
 	c := &connection{
-		conn:       conn,
-		lastRXTime: time.Now(),
+		conn:          conn,
+		lastRXTime:    time.Now(),
+		connectedPort: -1,
 	}
 	p.conns[*ipxAddr] = c
 	go c.receivePackets(p, ipxAddr)
@@ -118,6 +130,24 @@ func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
 	}
 	c.lastRXTime = time.Now()
 	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], &p.config.Address); err != nil {
+		log.Printf("failed to forward IPX packet to UDP server: %v", err)
+		p.closeConnection(&hdr.Src)
+	}
+}
+
+func (p *Proxy) processConnectedPacket(hdr *ipx.Header, pkt []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	c, ok := p.conns[hdr.Src]
+	if !ok || c.connectedPort < 0{
+		return
+	}
+	destAddress := &net.UDPAddr{
+		IP:   p.config.Address.IP,
+		Port: c.connectedPort,
+	}
+	c.lastRXTime = time.Now()
+	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], destAddress); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
 		p.closeConnection(&hdr.Src)
 	}
@@ -158,10 +188,11 @@ func (p *Proxy) Run() {
 		if err := header.UnmarshalBinary(buf[:n]); err != nil {
 			continue
 		}
-		if header.Dest.Socket != quakeIPXSocket {
-			continue
+		if header.Dest.Socket == quakeIPXSocket {
+			p.processPacket(&header, buf[:n])
+		} else if header.Dest.Socket == connectedIPXSocket {
+			p.processConnectedPacket(&header, buf[:n])
 		}
-		p.processPacket(&header, buf[:n])
 	}
 }
 
