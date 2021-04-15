@@ -3,6 +3,7 @@
 package qproxy
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net"
@@ -36,13 +37,17 @@ type connection struct {
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 	var buf [1500]byte
 	for {
-		n, err := c.conn.Read(buf[:])
+		n, addr, err := c.conn.ReadFromUDP(buf[:])
 		switch {
 		case c.closed:
 			return
 		case err != nil:
 			log.Printf("error receiving UDP packets for connection to %v: %v", c.conn.RemoteAddr(), err)
 			return
+		}
+		// Sanity check: packet must come from server's IP address.
+		if !bytes.Equal(addr.IP, p.config.Address.IP) {
+			continue
 		}
 		c.lastRXTime = time.Now()
 		hdr := &ipx.Header{
@@ -76,7 +81,7 @@ type Proxy struct {
 }
 
 func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
-	conn, err := net.DialUDP("udp", nil, &p.config.Address)
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{})
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +117,7 @@ func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
 		}
 	}
 	c.lastRXTime = time.Now()
-	if _, err := c.conn.Write(pkt[ipx.HeaderLength+quakeHeaderBytes:]); err != nil {
+	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], &p.config.Address); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
 		p.closeConnection(&hdr.Src)
 	}
