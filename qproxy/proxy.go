@@ -50,7 +50,7 @@ type connection struct {
 // handleAccept checks if a packet received from the main server port is a
 // CCREP_ACCEPT packet, and if so, reads the connected port number from the
 // packet, then replaces it with connectedIPXSocket.
-func (c *connection) handleAccept(packet []byte, serverPort int) {
+func (c *connection) handleAccept(packet []byte, serverAddr *net.UDPAddr) {
 	if len(packet) != acceptHeaderLen {
 		return
 	}
@@ -65,13 +65,25 @@ func (c *connection) handleAccept(packet []byte, serverPort int) {
 	// In this case we cannot distinguish between packets destined for
 	// quakeIPXSocket vs connectedIPXSocket. Therefore in this case we
 	// forward all traffic from the same IPX port.
-	if c.connectedPort == serverPort {
+	if c.connectedPort == serverAddr.Port {
 		c.ipxSocket = quakeIPXSocket
 	}
 	// Before forwarding onto the IPX network, we must replace the UDP
 	// socket number with the connected IPX port number.
 	packet[5] = byte(c.ipxSocket & 0xff)
 	packet[6] = byte((c.ipxSocket >> 8) & 0xff)
+	// The server will try to send us packets from the new port, but we
+	// may be behind a firewall connecting outwards. So send a packet to
+	// this new port so that packets will get through.
+	if c.connectedPort != serverAddr.Port {
+		destAddress := &net.UDPAddr{
+			IP:   serverAddr.IP,
+			Port: c.connectedPort,
+		}
+		if _, err := c.conn.WriteToUDP([]byte{}, destAddress); err != nil {
+			log.Printf("error sending firewall traversal packet: %v", err)
+		}
+	}
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
@@ -95,7 +107,7 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		socket := uint16(c.ipxSocket)
 		if addr.Port == p.config.Address.Port {
 			socket = uint16(quakeIPXSocket)
-			c.handleAccept(buf[:n], p.config.Address.Port)
+			c.handleAccept(buf[:n], &p.config.Address)
 		} else if addr.Port != c.connectedPort {
 			continue
 		}
