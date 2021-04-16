@@ -3,7 +3,6 @@
 package qproxy
 
 import (
-	"bytes"
 	"io"
 	"log"
 	"net"
@@ -19,16 +18,10 @@ const (
 	quakeIPXSocket       = 26000
 	connectedIPXSocket   = 26001
 	quakeHeaderBytes     = 4
-	acceptHeaderLen      = 9
-)
+	acceptHeaderMinLen   = 9
 
-var (
-	acceptHeaderBytes = []byte{
-		0x80, // NETFLAG_CTL
-		0x00,
-		0x00, 0x09, // length=9
-		0x81, // CCREP_ACCEPT
-	}
+	// Packet response from server when accepting connection
+	ccRepAccept = 0x81
 )
 
 type Config struct {
@@ -51,10 +44,10 @@ type connection struct {
 // CCREP_ACCEPT packet, and if so, reads the connected port number from the
 // packet, then replaces it with connectedIPXSocket.
 func (c *connection) handleAccept(packet []byte, serverAddr *net.UDPAddr) {
-	if len(packet) != acceptHeaderLen {
+	if len(packet) < acceptHeaderMinLen {
 		return
 	}
-	if !bytes.Equal(acceptHeaderBytes, packet[:len(acceptHeaderBytes)]) {
+	if packet[4] != ccRepAccept {
 		return
 	}
 	// We have a legitimate looking CCREP_ACCEPT packet.
