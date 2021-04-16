@@ -70,8 +70,8 @@ func (c *connection) handleAccept(packet []byte, serverPort int) {
 	}
 	// Before forwarding onto the IPX network, we must replace the UDP
 	// socket number with the connected IPX port number.
-	packet[5] = byte(c.connectedPort & 0xff)
-	packet[6] = byte((c.connectedPort >> 8) & 0xff)
+	packet[5] = byte(c.ipxSocket & 0xff)
+	packet[6] = byte((c.ipxSocket >> 8) & 0xff)
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
