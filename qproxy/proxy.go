@@ -43,13 +43,14 @@ type connection struct {
 	conn          *net.UDPConn
 	lastRXTime    time.Time
 	connectedPort int
+	ipxSocket     int
 	closed        bool
 }
 
 // handleAccept checks if a packet received from the main server port is a
 // CCREP_ACCEPT packet, and if so, reads the connected port number from the
 // packet, then replaces it with connectedIPXSocket.
-func (c *connection) handleAccept(packet []byte) {
+func (c *connection) handleAccept(packet []byte, serverPort int) {
 	if len(packet) != acceptHeaderLen {
 		return
 	}
@@ -60,10 +61,17 @@ func (c *connection) handleAccept(packet []byte) {
 	// The server has indicated the port number assigned for this
 	// connection as part of the packet.
 	c.connectedPort = (int(packet[6]) << 8) | int(packet[5])
+	// Some Quake source ports do not allocate a new port per connection.
+	// In this case we cannot distinguish between packets destined for
+	// quakeIPXSocket vs connectedIPXSocket. Therefore in this case we
+	// forward all traffic from the same IPX port.
+	if c.connectedPort == serverPort {
+		c.ipxSocket = quakeIPXSocket
+	}
 	// Before forwarding onto the IPX network, we must replace the UDP
 	// socket number with the connected IPX port number.
-	packet[5] = byte(connectedIPXSocket & 0xff)
-	packet[6] = byte((connectedIPXSocket >> 8) & 0xff)
+	packet[5] = byte(c.connectedPort & 0xff)
+	packet[6] = byte((c.connectedPort >> 8) & 0xff)
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
@@ -84,10 +92,10 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 		// Packet must come from either the server's main port or from
 		// the port assigned to this connection. Map this into the IPX
 		// socket number for the source address.
-		socket := uint16(connectedIPXSocket)
+		socket := uint16(c.ipxSocket)
 		if addr.Port == p.config.Address.Port {
 			socket = uint16(quakeIPXSocket)
-			c.handleAccept(buf[:n])
+			c.handleAccept(buf[:n], p.config.Address.Port)
 		} else if addr.Port != c.connectedPort {
 			continue
 		}
@@ -131,6 +139,7 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 		conn:          conn,
 		lastRXTime:    time.Now(),
 		connectedPort: -1,
+		ipxSocket:     connectedIPXSocket,
 	}
 	p.conns[*ipxAddr] = c
 	go c.receivePackets(p, ipxAddr)
