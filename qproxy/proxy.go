@@ -59,11 +59,11 @@ func (c *connection) handleAccept(packet []byte) {
 	// We have a legitimate looking CCREP_ACCEPT packet.
 	// The server has indicated the port number assigned for this
 	// connection as part of the packet.
-	c.connectedPort = (int(packet[5]) << 8) | int(packet[6])
+	c.connectedPort = (int(packet[6]) << 8) | int(packet[5])
 	// Before forwarding onto the IPX network, we must replace the UDP
 	// socket number with the connected IPX port number.
-	packet[5] = byte((connectedIPXSocket >> 8) & 0xff)
-	packet[6] = byte(connectedIPXSocket & 0xff)
+	packet[5] = byte(connectedIPXSocket & 0xff)
+	packet[6] = byte((connectedIPXSocket >> 8) & 0xff)
 }
 
 func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
