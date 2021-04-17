@@ -14,6 +14,9 @@ users on real DOS machines.
 uses the packet driver interface to get a network connection over dosbox's
 built-in IPX protocol support.
 
+* Proxying to Quake servers, so that you can make UDP-based Quake servers
+appear as "local" IPX servers.
+
 * Syslog integration for audit logging when running a public server.
 
 For some setup instructions, see the [HOWTO](HOWTO.md).
