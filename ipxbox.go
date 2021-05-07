@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 
 	"github.com/fragglet/ipxbox/bridge"
@@ -82,31 +81,17 @@ func ethernetStream() (phys.DuplexEthernetStream, error) {
 	return handle, nil
 }
 
-func addQuakeProxies(v *virtual.Network) error {
+func addQuakeProxies(v *virtual.Network) {
 	if *quakeServers == "" {
-		return nil
+		return
 	}
-	errors := []string{}
-	addresses := []*net.UDPAddr{}
-	for _, s := range strings.Split(*quakeServers, ",") {
-		udpAddr, err := net.ResolveUDPAddr("udp", s)
-		if err != nil {
-			errors = append(errors, err.Error())
-		} else {
-			addresses = append(addresses, udpAddr)
-		}
-	}
-	if len(errors) > 0 {
-		return fmt.Errorf("failed to resolve some Quake servers: %v", strings.Join(errors, ","))
-	}
-	for _, udpAddr := range addresses {
+	for _, addr := range strings.Split(*quakeServers, ",") {
 		p := qproxy.New(&qproxy.Config{
-			Address:     *udpAddr,
+			Address:     addr,
 			IdleTimeout: *clientTimeout,
 		}, v.NewNode())
 		go p.Run()
 	}
-	return nil
 }
 
 func main() {
@@ -147,9 +132,7 @@ func main() {
 	if *dumpPackets {
 		go printPackets(v)
 	}
-	if err := addQuakeProxies(v); err != nil {
-		log.Fatal(err)
-	}
+	addQuakeProxies(v)
 	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
 	if err != nil {
 		log.Fatal(err)

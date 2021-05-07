@@ -26,7 +26,7 @@ const (
 
 type Config struct {
 	// Address of Quake server.
-	Address net.UDPAddr
+	Address string
 
 	// IdleTimeout is the amount of time after which a connection is deleted.
 	IdleTimeout time.Duration
@@ -91,16 +91,16 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 			return
 		}
 		// Sanity check: packet must come from server's IP address.
-		if !addr.IP.Equal(p.config.Address.IP) {
+		if !addr.IP.Equal(p.address.IP) {
 			continue
 		}
 		// Packet must come from either the server's main port or from
 		// the port assigned to this connection. Map this into the IPX
 		// socket number for the source address.
 		socket := uint16(c.ipxSocket)
-		if addr.Port == p.config.Address.Port {
+		if addr.Port == p.address.Port {
 			socket = uint16(quakeIPXSocket)
-			c.handleAccept(buf[:n], &p.config.Address)
+			c.handleAccept(buf[:n], &p.address)
 		} else if addr.Port != c.connectedPort {
 			continue
 		}
@@ -129,10 +129,11 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 }
 
 type Proxy struct {
-	config Config
-	node   network.Node
-	conns  map[ipx.HeaderAddr]*connection
-	mu     sync.Mutex
+	config  Config
+	node    network.Node
+	conns   map[ipx.HeaderAddr]*connection
+	mu      sync.Mutex
+	address net.UDPAddr
 }
 
 func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
@@ -161,20 +162,37 @@ func (p *Proxy) closeConnection(addr *ipx.HeaderAddr) {
 	c.conn.Close()
 }
 
+func (p *Proxy) resolveAddress() bool {
+	a, err := net.ResolveUDPAddr("udp", p.config.Address)
+	if err != nil {
+		log.Printf("failed to resolve server address: %v", err)
+		return false
+	}
+	p.address = *a
+	return true
+}
+
 func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// First connection triggers the server address to be resolved. After
+	// all connections time out, we resolve again once a new connection is
+	// opened. This handles dynamic DNS addresses where the IP changes.
+	// But we don't block on DNS resolution while a game is in progress.
+	if len(p.conns) == 0 && !p.resolveAddress() {
+		return
+	}
 	c, ok := p.conns[hdr.Src]
 	if !ok {
 		var err error
 		c, err = p.newConnection(&hdr.Src)
 		if err != nil {
-			log.Printf("failed to create new connection to %v: %v", p.config.Address, err)
+			log.Printf("failed to create new connection to %v: %v", p.address, err)
 			return
 		}
 	}
 	c.lastRXTime = time.Now()
-	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], &p.config.Address); err != nil {
+	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], &p.address); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
 		p.closeConnection(&hdr.Src)
 	}
@@ -188,7 +206,7 @@ func (p *Proxy) processConnectedPacket(hdr *ipx.Header, pkt []byte) {
 		return
 	}
 	destAddress := &net.UDPAddr{
-		IP:   p.config.Address.IP,
+		IP:   p.address.IP,
 		Port: c.connectedPort,
 	}
 	c.lastRXTime = time.Now()
