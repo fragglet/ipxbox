@@ -138,6 +138,7 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 }
 
 func (c *Connection) run() {
+messageLoop:
 	for {
 		msg, err := c.readNextMessage()
 		if err != nil {
@@ -152,6 +153,8 @@ func (c *Connection) run() {
 			c.handleEcho(msg)
 		case msgOutgoingCallRequest:
 			c.handleOutgoingCall(msg)
+		case msgCallClearRequest:
+			break messageLoop
 		}
 	}
 	c.conn.Close()
