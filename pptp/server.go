@@ -36,11 +36,12 @@ type Connection struct {
 
 func (c *Connection) sendMessage(msg []byte) {
 	msg = append([]byte{0, 0}, msg...)
-	binary.BigEndian.PutUint16(msg[0:2], len(msg))
+	binary.BigEndian.PutUint16(msg[0:2], uint16(len(msg)))
 	c.conn.Write(msg)
 }
 
 func (c *Connection) handleStartControl(msg []byte) {
+	// We literally don't care about anything they sent us.
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
@@ -82,6 +83,9 @@ func (c *Connection) handleEcho(msg []byte) {
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
+	if len(msg) < 22 {
+		return
+	}
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
@@ -112,8 +116,11 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 		return nil, err
 	}
 	msglen := binary.BigEndian.Uint16(lenField[:])
-	if msglen < 16 {
+	switch {
+	case msglen < 16:
 		return nil, fmt.Errorf("message too short: len=%d", msglen)
+	case msglen > 256:
+		return nil, fmt.Errorf("message too long: len=%d", msglen)
 	}
 	result := make([]byte, 0, msglen-2)
 	if _, err := c.conn.Read(result); err != nil {
@@ -147,6 +154,7 @@ func (c *Connection) run() {
 			c.handleOutgoingCall(msg)
 		}
 	}
+	c.conn.Close()
 }
 
 func newConnection(conn net.Conn, callID uint16) *Connection {
@@ -157,7 +165,8 @@ func newConnection(conn net.Conn, callID uint16) *Connection {
 }
 
 type Server struct {
-	listener *net.TCPListener
+	listener   *net.TCPListener
+	nextCallID uint16
 }
 
 func (s *Server) Run() {
@@ -166,8 +175,9 @@ func (s *Server) Run() {
 		if err != nil {
 			break
 		}
-		c := newConnection(conn)
+		c := newConnection(conn, s.nextCallID)
 		go c.run()
+		s.nextCallID = (s.nextCallID + 1) & 0xffff
 	}
 	s.listener.Close()
 }
