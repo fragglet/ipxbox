@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	pptpPort = 1723
+	pptpPort    = 1723
 	magicNumber = 0x1a2b3c4d
 )
 
@@ -30,16 +30,80 @@ const (
 )
 
 type Connection struct {
-	conn net.Conn
+	callID uint16
+	conn   net.Conn
+}
+
+func (c *Connection) sendMessage(msg []byte) {
+	msg = append([]byte{0, 0}, msg...)
+	binary.BigEndian.PutUint16(msg[0:2], len(msg))
+	c.conn.Write(msg)
 }
 
 func (c *Connection) handleStartControl(msg []byte) {
+	reply := []byte{
+		0x00, 0x01, // Message type
+		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
+		0x00, 0x02, // Control message type
+		0x00, 0x00, // Reserved0
+		0x01, 0x00, // Protocol version
+		0x01,                   // Result code
+		0x00,                   // Error code
+		0x00, 0x00, 0x00, 0x00, // Framing capability
+		0x00, 0x00, 0x00, 0x00, // Bearer capability
+		0x00, 0x01, // Maximum channels
+		0x00, 0x01, // Firmware revision
+	}
+	var (
+		hostname [64]byte
+		vendor   [64]byte
+	)
+	copy(hostname[:], []byte("server"))
+	copy(vendor[:], []byte("ipxbox"))
+	reply = append(reply, hostname[:]...)
+	reply = append(reply, vendor[:]...)
+	c.sendMessage(reply)
 }
 
 func (c *Connection) handleEcho(msg []byte) {
+	reply := []byte{
+		0x00, 0x01, // Message type
+		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
+		0x00, 0x02, // Control message type
+		0x00, 0x00, // Reserved0
+		0xff, 0xff, 0xff, 0xff, // Identifier
+		0x01,       // Result code
+		0x00,       // Error code
+		0x00, 0x00, // Reserved1
+	}
+	// Send back the same identifier:
+	copy(reply[10:14], msg[10:14])
+	c.sendMessage(reply)
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
+	reply := []byte{
+		0x00, 0x01, // Message type
+		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
+		0x00, 0x08, // Control message type
+		0x00, 0x00, // Reserved0
+		0x01, 0x80, // Call ID
+		0x00, 0x00, // Peer call ID
+		0x01,       // Result code
+		0x00,       // Error code
+		0x00, 0x00, // Cause code
+		0x00, 0x00, 0xfa, 0x00, // Connect speed
+		0x00, 0x10, // Receive window size
+		0x00, 0x00, // Processing delay
+		0x00, 0x00, 0x00, 0x00, // Physical channel ID
+	}
+	// Call ID.
+	binary.BigEndian.PutUint16(reply[10:12], c.callID)
+	// Connect speed = maximum speed
+	copy(reply[18:22], msg[18:22])
+	// Copy peer's call ID.
+	copy(reply[12:14], msg[10:12])
+	c.sendMessage(reply)
 }
 
 func (c *Connection) readNextMessage() ([]byte, error) {
@@ -51,9 +115,13 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 	if msglen < 16 {
 		return nil, fmt.Errorf("message too short: len=%d", msglen)
 	}
-	result := make([]byte, 0, msglen - 2)
+	result := make([]byte, 0, msglen-2)
 	if _, err := c.conn.Read(result); err != nil {
 		return nil, err
+	}
+	gotMsgType := binary.BigEndian.Uint16(result[0:2])
+	if gotMsgType != 1 {
+		return nil, fmt.Errorf("wrong PPTP message type, want=1, got=%d", gotMsgType)
 	}
 	gotMagicNumber := binary.BigEndian.Uint32(result[2:6])
 	if magicNumber != gotMagicNumber {
@@ -69,19 +137,23 @@ func (c *Connection) run() {
 			// TODO: log?
 			break
 		}
-		msgtype := binary.BigEndian.Uint16(msg[0:2])
+		msgtype := binary.BigEndian.Uint16(msg[6:8])
 		switch msgtype {
-			case msgStartControlConnectionRequest:
-				c.handleStartControl(msg)
-			case msgEchoRequest:
-				c.handleEcho(msg)
-			case msgOutgoingCallRequest:
-				c.handleOutgoingCall(msg)
+		case msgStartControlConnectionRequest:
+			c.handleStartControl(msg)
+		case msgEchoRequest:
+			c.handleEcho(msg)
+		case msgOutgoingCallRequest:
+			c.handleOutgoingCall(msg)
 		}
 	}
 }
 
-func newConnection(conn net.Conn) {
+func newConnection(conn net.Conn, callID uint16) *Connection {
+	return &Connection{
+		conn:   conn,
+		callID: callID,
+	}
 }
 
 type Server struct {
@@ -94,7 +166,8 @@ func (s *Server) Run() {
 		if err != nil {
 			break
 		}
-		go newConnection(conn)
+		c := newConnection(conn)
+		go c.run()
 	}
 	s.listener.Close()
 }
@@ -110,4 +183,3 @@ func NewServer() (*Server, error) {
 		listener: listener,
 	}, nil
 }
-
