@@ -70,7 +70,7 @@ func (c *Connection) handleEcho(msg []byte) {
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
-		0x00, 0x02, // Control message type
+		0x00, 0x06, // Control message type
 		0x00, 0x00, // Reserved0
 		0xff, 0xff, 0xff, 0xff, // Identifier
 		0x01,       // Result code
@@ -122,7 +122,7 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 	case msglen > 256:
 		return nil, fmt.Errorf("message too long: len=%d", msglen)
 	}
-	result := make([]byte, 0, msglen-2)
+	result := make([]byte, msglen-2)
 	if _, err := c.conn.Read(result); err != nil {
 		return nil, err
 	}
