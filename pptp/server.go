@@ -3,6 +3,8 @@ package pptp
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"log"
 	"net"
 )
 
@@ -32,6 +34,7 @@ const (
 type Connection struct {
 	callID uint16
 	conn   net.Conn
+	gre    *greSession
 }
 
 func (c *Connection) sendMessage(msg []byte) {
@@ -82,10 +85,37 @@ func (c *Connection) handleEcho(msg []byte) {
 	c.sendMessage(reply)
 }
 
+func logPackets(src io.Reader) {
+	var recvbuf [1500]byte
+	for {
+		n, err := src.Read(recvbuf[:])
+		if err != nil {
+			log.Printf("error reading from GRE: %v", err)
+			break
+		}
+		log.Printf("got GRE PPP frame: %+v", recvbuf[:n])
+	}
+}
+
 func (c *Connection) handleOutgoingCall(msg []byte) {
 	if len(msg) < 22 {
 		return
 	}
+	// Start up GRE session if we have not already.
+	if c.gre == nil {
+		addr := c.conn.RemoteAddr().(*net.TCPAddr)
+		sendCallID := binary.BigEndian.Uint16(msg[10:12])
+		var err error
+		c.gre, err = makeGREWrapper(addr.IP, sendCallID, c.callID)
+		if err != nil {
+			// TODO: Send back error message? Log error?
+			c.conn.Close()
+			return
+		}
+		// TODO: Handle incoming PPP session rather than printing packets
+		go logPackets(c.gre)
+	}
+
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
@@ -158,6 +188,9 @@ messageLoop:
 		}
 	}
 	c.conn.Close()
+	if c.gre != nil {
+		c.gre.Close()
+	}
 }
 
 func newConnection(conn net.Conn, callID uint16) *Connection {
@@ -193,6 +226,7 @@ func NewServer() (*Server, error) {
 		return nil, err
 	}
 	return &Server{
-		listener: listener,
+		listener:   listener,
+		nextCallID: 384,
 	}, nil
 }
