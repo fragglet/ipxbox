@@ -51,6 +51,7 @@ func (s *greSession) recvPacket(p []byte) (int, error) {
 	if greHeader.Seq < s.recvSeq {
 		return 0, outOfSequencePacket
 	}
+	// TODO: if we don't otherwise send a packet, send an empty ack packet
 	s.recvSeq = greHeader.Seq
 	result := ls[1].LayerPayload()
 	copy(p[0:len(result)], result)
