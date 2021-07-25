@@ -27,7 +27,7 @@ var _ = (io.ReadWriteCloser)(&greSession{})
 // session.
 type greSession struct {
 	conn                        net.Conn
-	sendCallID, recvCallID      uint32
+	sendCallID, recvCallID      uint16
 	sentSeq, recvSeq, recvAcked uint32
 }
 
@@ -45,7 +45,10 @@ func (s *greSession) recvPacket(p []byte) (int, error) {
 	if greHeader.Version != 1 || greHeader.Protocol != layers.EthernetTypePPP {
 		return 0, wrongGREFields
 	}
-	if !greHeader.KeyPresent || greHeader.Key != s.recvCallID || !greHeader.SeqPresent {
+	// In PPTP modified GRE, the bottom two octets of the key field are
+	// used to contain the call ID.
+	callID := uint16(greHeader.Key & 0xffff)
+	if !greHeader.KeyPresent || callID != s.recvCallID || !greHeader.SeqPresent {
 		return 0, wrongSession
 	}
 	if greHeader.Seq < s.recvSeq {
@@ -81,7 +84,7 @@ func (s *greSession) sendPacket(frame []byte) (int, error) {
 	greHeader := &layers.GRE{
 		Protocol:   layers.EthernetTypePPP,
 		KeyPresent: true,
-		Key:        s.sendCallID,
+		Key:        uint32(len(frame)<<16) | uint32(s.sendCallID),
 		Version:    1, // Enhanced GRE
 	}
 	if len(frame) > 0 {
@@ -117,6 +120,8 @@ func makeGREWrapper(remoteAddr net.IP, sendCallID, recvCallID uint16) (*greSessi
 		return nil, err
 	}
 	return &greSession{
-		conn: conn,
+		conn:       conn,
+		sendCallID: sendCallID,
+		recvCallID: recvCallID,
 	}, nil
 }
