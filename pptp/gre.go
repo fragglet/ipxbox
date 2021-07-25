@@ -62,7 +62,12 @@ func (s *greSession) Read(p []byte) (int, error) {
 		cnt, err := s.recvPacket(p)
 		switch err {
 		case nil:
-			return cnt, nil
+			// We might have successfully received a packet, but if
+			// it was just an ack it might have been zero length,
+			// so try again.
+			if cnt > 0 {
+				return cnt, nil
+			}
 		case wrongLayers, wrongGREFields, wrongSession, outOfSequencePacket:
 			// try again
 		default:
