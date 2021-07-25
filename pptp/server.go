@@ -106,7 +106,7 @@ func (c *Connection) handleOutgoingCall(msg []byte) {
 		addr := c.conn.RemoteAddr().(*net.TCPAddr)
 		sendCallID := binary.BigEndian.Uint16(msg[10:12])
 		var err error
-		c.gre, err = makeGREWrapper(addr.IP, sendCallID, c.callID)
+		c.gre, err = startGRESession(addr.IP, sendCallID, c.callID)
 		if err != nil {
 			// TODO: Send back error message? Log error?
 			c.conn.Close()

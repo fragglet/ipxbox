@@ -114,7 +114,7 @@ func (s *greSession) Close() error {
 	return s.conn.Close()
 }
 
-func makeGREWrapper(remoteAddr net.IP, sendCallID, recvCallID uint16) (*greSession, error) {
+func startGRESession(remoteAddr net.IP, sendCallID, recvCallID uint16) (*greSession, error) {
 	conn, err := net.Dial(fmt.Sprintf("ip4:%d", greProtocol), remoteAddr.String())
 	if err != nil {
 		return nil, err
