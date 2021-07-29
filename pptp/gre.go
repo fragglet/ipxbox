@@ -51,6 +51,11 @@ func (s *greSession) recvPacket(p []byte) (int, error) {
 	if !greHeader.KeyPresent || callID != s.recvCallID || !greHeader.SeqPresent {
 		return 0, wrongSession
 	}
+	// RFC 2637 mandates that "out of sequence packets between the PNS and
+	// PAC MUST be silently discarded [or reordered]" because PPP cannot
+	// handle out-of-order packets.
+	// TODO: Consider selectively breaking this requirement for some
+	// packets, ie. encapsulated IPX frames.
 	if greHeader.Seq < s.recvSeq {
 		return 0, outOfSequencePacket
 	}

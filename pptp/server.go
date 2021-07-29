@@ -1,3 +1,8 @@
+// Package pptp contains an implementation of a PPTP VPN server that is
+// specifically intended to allow IPX protocol games to be played from old
+// Windows 9x machines. It is deliberately limited in scope and functionality,
+// lacking many of the features commonly found in most PPTP implementations
+// that are not necessary for its intended function.
 package pptp
 
 import (
@@ -200,11 +205,14 @@ func newConnection(conn net.Conn, callID uint16) *Connection {
 	}
 }
 
+// Server is an implementation of a PPTP server.
 type Server struct {
 	listener   *net.TCPListener
 	nextCallID uint16
 }
 
+// Run listens for and accepts new connections to the server. It blocks until
+// the server is shut down, so it should be invoked in a dedicated goroutine.
 func (s *Server) Run() {
 	for {
 		conn, err := s.listener.Accept()
@@ -216,6 +224,10 @@ func (s *Server) Run() {
 		s.nextCallID = (s.nextCallID + 1) & 0xffff
 	}
 	s.listener.Close()
+}
+
+func (s *Server) Close() error {
+	return s.listener.Close()
 }
 
 func NewServer() (*Server, error) {
