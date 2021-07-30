@@ -2,7 +2,10 @@ package lcp
 
 import (
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
+
+const PPPTypeIPXCP = layers.PPPType(0x802B)
 
 var LayerTypeIPXCP = gopacket.RegisterLayerType(1819, gopacket.LayerTypeMetadata{
 	Name:    "IPXCP",

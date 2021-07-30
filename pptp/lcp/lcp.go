@@ -20,14 +20,16 @@ const (
 	ipxcpDialect
 )
 
+const PPPTypeLCP = layers.PPPType(0xc021)
+
 var (
 	MessageTooShort = errors.New("LCP message too short")
-)
 
-var LayerTypeLCP = gopacket.RegisterLayerType(1818, gopacket.LayerTypeMetadata{
-	Name:    "LCP",
-	Decoder: gopacket.DecodeFunc(decodeLCP),
-})
+	LayerTypeLCP = gopacket.RegisterLayerType(1818, gopacket.LayerTypeMetadata{
+		Name:    "LCP",
+		Decoder: gopacket.DecodeFunc(decodeLCP),
+	})
+)
 
 // TODO: Implement SerializeTo and make this SerializableLayer.
 var _ = gopacket.Layer(&LCP{})
@@ -185,4 +187,17 @@ func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
 	}
 	p.AddLayer(lcp)
 	return nil
+}
+
+func init() {
+	// Hook in our layers on startup to the PPP layer, so that we will get
+	// them decoded automatically if found inside PPP frames.
+	layers.PPPTypeMetadata[PPPTypeLCP] = layers.EnumMetadata{
+		DecodeWith: gopacket.DecodeFunc(decodeLCP),
+		Name: "LCP",
+	}
+	layers.PPPTypeMetadata[PPPTypeIPXCP] = layers.EnumMetadata{
+		DecodeWith: gopacket.DecodeFunc(decodeIPXCP),
+		Name: "IPXCP",
+	}
 }
