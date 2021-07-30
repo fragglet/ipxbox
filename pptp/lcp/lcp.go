@@ -1,4 +1,6 @@
-package pptp
+// Package lcp contains a gopacket Layer that implements the PPP Link Control
+// Protocol (LCP).
+package lcp
 
 import (
 	"encoding/binary"
@@ -9,7 +11,7 @@ import (
 )
 
 var (
-	LCPMessageTooShort = errors.New("LCP message too short")
+	MessageTooShort = errors.New("LCP message too short")
 )
 
 var LayerTypeLCP = gopacket.RegisterLayerType(1818, gopacket.LayerTypeMetadata{
@@ -20,55 +22,55 @@ var LayerTypeLCP = gopacket.RegisterLayerType(1818, gopacket.LayerTypeMetadata{
 // TODO: Implement SerializeTo and make this SerializableLayer.
 var _ = gopacket.Layer(&LCP{})
 
-type LCPOptionType uint8
+type OptionType uint8
 
 // TODO: constants for common option types
 
-type LCPOption struct {
-	Type LCPOptionType
+type Option struct {
+	Type OptionType
 	Data []byte
 }
 
-type LCPMessageType uint8
+type MessageType uint8
 
 const (
-	LCPConfigureRequest LCPMessageType = iota + 1
-	LCPConfigureAck
-	LCPConfigureNak
-	LCPConfigureReject
-	LCPTerminateRequest
-	LCPTerminateAck
-	LCPCodeReject
-	LCPProtocolReject
-	LCPEchoRequest
-	LCPEchoReply
-	LCPDiscardRequest
+	ConfigureRequest MessageType = iota + 1
+	ConfigureAck
+	ConfigureNak
+	ConfigureReject
+	TerminateRequest
+	TerminateAck
+	CodeReject
+	ProtocolReject
+	EchoRequest
+	EchoReply
+	DiscardRequest
 )
 
 // LCP is a gopacket layer for the Link Control Protocol.
 type LCP struct {
 	layers.BaseLayer
-	Type       LCPMessageType
+	Type       MessageType
 	Identifier uint8
-	Options    []LCPOption
+	Options    []Option
 }
 
 func (l *LCP) LayerType() gopacket.LayerType {
 	return LayerTypeLCP
 }
 
-func decodeOptions(data []byte) ([]LCPOption, error) {
-	result := []LCPOption{}
+func decodeOptions(data []byte) ([]Option, error) {
+	result := []Option{}
 	for len(data) > 0 {
 		if len(data) < 3 {
-			return nil, LCPMessageTooShort
+			return nil, MessageTooShort
 		}
-		optType := LCPOptionType(data[0])
+		optType := OptionType(data[0])
 		optLen := binary.BigEndian.Uint16(data[1:3])
 		if int(optLen) > len(data) {
-			return nil, LCPMessageTooShort
+			return nil, MessageTooShort
 		}
-		result = append(result, LCPOption{
+		result = append(result, Option{
 			Type: optType,
 			Data: data[3:optLen],
 		})
@@ -80,18 +82,18 @@ func decodeOptions(data []byte) ([]LCPOption, error) {
 func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
 	lcp := &LCP{}
 	if len(data) < 4 {
-		return LCPMessageTooShort
+		return MessageTooShort
 	}
-	lcp.Type = LCPMessageType(data[0])
+	lcp.Type = MessageType(data[0])
 	lcp.Identifier = data[1]
 	lenField := binary.BigEndian.Uint16(data[2:4])
 	if int(lenField) > len(data) {
-		return LCPMessageTooShort
+		return MessageTooShort
 	}
 
 	var err error
 	switch lcp.Type {
-	case LCPConfigureRequest, LCPConfigureAck, LCPConfigureNak, LCPConfigureReject:
+	case ConfigureRequest, ConfigureAck, ConfigureNak, ConfigureReject:
 		lcp.Options, err = decodeOptions(data[4:])
 		if err != nil {
 			return err
