@@ -3,6 +3,7 @@
 package lcp
 
 import (
+	"encoding"
 	"encoding/binary"
 	"errors"
 
@@ -47,28 +48,27 @@ const (
 	DiscardRequest
 )
 
-// LCP is a gopacket layer for the Link Control Protocol.
-type LCP struct {
-	layers.BaseLayer
-	Type       MessageType
-	Identifier uint8
-	Options    []Option
+// PerTypeData specifies a common interface that is implemented by other types
+// that represent per-message-type data.
+type PerTypeData interface {
+	encoding.BinaryUnmarshaler
 }
 
-func (l *LCP) LayerType() gopacket.LayerType {
-	return LayerTypeLCP
+// ConfigureData contains the data that is specific to Configure-* messages.
+type ConfigureData struct {
+	Options []Option
 }
 
-func decodeOptions(data []byte) ([]Option, error) {
+func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 	result := []Option{}
 	for len(data) > 0 {
 		if len(data) < 3 {
-			return nil, MessageTooShort
+			return MessageTooShort
 		}
 		optType := OptionType(data[0])
 		optLen := binary.BigEndian.Uint16(data[1:3])
 		if int(optLen) > len(data) {
-			return nil, MessageTooShort
+			return MessageTooShort
 		}
 		result = append(result, Option{
 			Type: optType,
@@ -76,7 +76,45 @@ func decodeOptions(data []byte) ([]Option, error) {
 		})
 		data = data[optLen:]
 	}
-	return result, nil
+	d.Options = result
+	return nil
+}
+
+// TerminateData contains the data that is specific to Terminate-* messages.
+type TerminateData struct {
+	Data []byte
+}
+
+func (d *TerminateData) UnmarshalBinary(data []byte) error {
+	d.Data = data
+	return nil
+}
+
+// EchoData contains the data that is specific to echo-* messages.
+type EchoData struct {
+	MagicNumber uint32
+	Data        []byte
+}
+
+func (d *EchoData) UnmarshalBinary(data []byte) error {
+	if len(data) < 4 {
+		return MessageTooShort
+	}
+	d.MagicNumber = binary.BigEndian.Uint32(data[:4])
+	d.Data = data[4:]
+	return nil
+}
+
+// LCP is a gopacket layer for the Link Control Protocol.
+type LCP struct {
+	layers.BaseLayer
+	Type       MessageType
+	Identifier uint8
+	Data       PerTypeData
+}
+
+func (l *LCP) LayerType() gopacket.LayerType {
+	return LayerTypeLCP
 }
 
 func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
@@ -91,14 +129,19 @@ func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
 		return MessageTooShort
 	}
 
-	var err error
 	switch lcp.Type {
 	case ConfigureRequest, ConfigureAck, ConfigureNak, ConfigureReject:
-		lcp.Options, err = decodeOptions(data[4:])
-		if err != nil {
+		lcp.Data = &ConfigureData{}
+	case TerminateRequest, TerminateAck:
+		lcp.Data = &TerminateData{}
+	case EchoRequest, EchoReply:
+		lcp.Data = &EchoData{}
+		// TODO: Other message types.
+	}
+	if lcp.Data != nil {
+		if err := lcp.Data.UnmarshalBinary(data[4:]); err != nil {
 			return err
 		}
-		// TODO: Other message types
 	}
 	lcp.Contents = data
 	lcp.Payload = nil
