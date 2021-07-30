@@ -154,7 +154,7 @@ func (l *baseLCP) UnmarshalBinary(data []byte) error {
 		l.Data = &ConfigureData{dialect: l.dialect}
 	case TerminateRequest, TerminateAck:
 		l.Data = &TerminateData{}
-	case EchoRequest, EchoReply:
+	case EchoRequest, EchoReply, DiscardRequest:
 		l.Data = &EchoData{}
 		// TODO: Other message types.
 	}
