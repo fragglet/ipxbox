@@ -26,7 +26,7 @@ var (
 
 // IPXCP is a gopacket layer for the PPP IPX Control Protocol.
 type IPXCP struct {
-	baseLCP
+	BaseLayer
 }
 
 func (l *IPXCP) LayerType() gopacket.LayerType {
@@ -35,7 +35,7 @@ func (l *IPXCP) LayerType() gopacket.LayerType {
 
 func decodeIPXCP(data []byte, p gopacket.PacketBuilder) error {
 	ipxcp := &IPXCP{}
-	ipxcp.baseLCP.dialect = ipxcpDialect
+	ipxcp.dialect = ipxcpDialect
 	if err := ipxcp.UnmarshalBinary(data); err != nil {
 		return err
 	}
