@@ -22,8 +22,7 @@ var (
 	})
 )
 
-// TODO: Implement SerializeTo and make this SerializableLayer.
-var _ = gopacket.Layer(&LCP{})
+var _ = gopacket.SerializableLayer(&LCP{})
 
 // OptionType identifies an LCP option, at least in the context of the
 // particular dialect of LCP being used - the same ID will have different
@@ -64,6 +63,7 @@ const (
 // that represent per-message-type data.
 type PerTypeData interface {
 	encoding.BinaryUnmarshaler
+	encoding.BinaryMarshaler
 }
 
 // ConfigureData contains the data that is specific to Configure-* messages.
@@ -92,6 +92,16 @@ func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+func (d *ConfigureData) MarshalBinary() (data []byte, err error) {
+	result := []byte{}
+	for _, opt := range d.Options {
+		optBytes := []byte{byte(opt.Type), 0, 0}
+		binary.BigEndian.PutUint16(optBytes[1:3], uint16(len(opt.Data)+3))
+		result = append(result, optBytes...)
+	}
+	return result, nil
+}
+
 // TerminateData contains the data that is specific to Terminate-* messages.
 type TerminateData struct {
 	Data []byte
@@ -100,6 +110,10 @@ type TerminateData struct {
 func (d *TerminateData) UnmarshalBinary(data []byte) error {
 	d.Data = data
 	return nil
+}
+
+func (d *TerminateData) MarshalBinary() (data []byte, err error) {
+	return d.Data, nil
 }
 
 // EchoData contains the data that is specific to echo-* messages.
@@ -115,6 +129,13 @@ func (d *EchoData) UnmarshalBinary(data []byte) error {
 	d.MagicNumber = binary.BigEndian.Uint32(data[:4])
 	d.Data = data[4:]
 	return nil
+}
+
+func (d *EchoData) MarshalBinary() (data []byte, err error) {
+	result := []byte{0, 0, 0, 0}
+	binary.BigEndian.PutUint32(data[:], d.MagicNumber)
+	result = append(result, d.Data...)
+	return result, nil
 }
 
 // LCP is a gopacket layer for the Link Control Protocol and and other
@@ -156,6 +177,36 @@ func (l *LCP) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+func (l *LCP) MarshalBinary() (data []byte, err error) {
+	var extraBytes []byte
+	if l.Data != nil {
+		var err error
+		extraBytes, err = l.Data.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+	}
+	header := []byte{byte(l.Type), l.Identifier, 0, 0}
+	totalLen := len(extraBytes) + len(header)
+	binary.BigEndian.PutUint16(header[2:4], uint16(totalLen))
+	result := append([]byte{}, header...)
+	result = append(result, extraBytes...)
+	return result, nil
+}
+
+func (l *LCP) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	src, err := l.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	dest, err := b.PrependBytes(len(src))
+	if err != nil {
+		return err
+	}
+	copy(dest, src)
+	return nil
+}
+
 func (l *LCP) LayerType() gopacket.LayerType {
 	return LayerTypeLCP
 }
@@ -174,10 +225,10 @@ func init() {
 	// them decoded automatically if found inside PPP frames.
 	layers.PPPTypeMetadata[PPPTypeLCP] = layers.EnumMetadata{
 		DecodeWith: gopacket.DecodeFunc(decodeLCP),
-		Name: "LCP",
+		Name:       "LCP",
 	}
 	layers.PPPTypeMetadata[PPPTypeIPXCP] = layers.EnumMetadata{
 		DecodeWith: gopacket.DecodeFunc(decodeLCP),
-		Name: "IPXCP",
+		Name:       "IPXCP",
 	}
 }
