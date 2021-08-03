@@ -16,12 +16,12 @@ var LayerTypeIPXCP = gopacket.RegisterLayerType(1819, gopacket.LayerTypeMetadata
 var _ = gopacket.Layer(&LCP{})
 
 var (
-	OptionIPXNetwork               = OptionType{ipxcpDialect, 1}
-	OptionIPXNode                  = OptionType{ipxcpDialect, 2}
-	OptionIPXCompressionProtocol   = OptionType{ipxcpDialect, 3}
-	OptionIPXRoutingProtocol       = OptionType{ipxcpDialect, 4}
-	OptionIPXRouterName            = OptionType{ipxcpDialect, 5}
-	OptionIPXConfigurationComplete = OptionType{ipxcpDialect, 6}
+	OptionIPXNetwork               = OptionType(1)
+	OptionIPXNode                  = OptionType(2)
+	OptionIPXCompressionProtocol   = OptionType(3)
+	OptionIPXRoutingProtocol       = OptionType(4)
+	OptionIPXRouterName            = OptionType(5)
+	OptionIPXConfigurationComplete = OptionType(6)
 )
 
 // IPXCP is a gopacket layer for the PPP IPX Control Protocol.
@@ -35,7 +35,7 @@ func (l *IPXCP) LayerType() gopacket.LayerType {
 
 func decodeIPXCP(data []byte, p gopacket.PacketBuilder) error {
 	ipxcp := &IPXCP{}
-	ipxcp.dialect = ipxcpDialect
+	ipxcp.PPPType = PPPTypeIPXCP
 	if err := ipxcp.UnmarshalBinary(data); err != nil {
 		return err
 	}

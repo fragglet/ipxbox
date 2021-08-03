@@ -11,15 +11,6 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-// dialect is used to distinguish between LCP proper and other PPP control
-// protocols which reuse the same message format with different options.
-type dialect uint8
-
-const (
-	lcpDialect dialect = iota
-	ipxcpDialect
-)
-
 const PPPTypeLCP = layers.PPPType(0xc021)
 
 var (
@@ -34,21 +25,18 @@ var (
 // TODO: Implement SerializeTo and make this SerializableLayer.
 var _ = gopacket.Layer(&LCP{})
 
-// OptionType uniquely identifies an LCP option not just by its one-byte ID
-// number, but also according to the particular dialect of LCP that it
-// applies to (in the case of other protocols that reuse LCP's wire format).
-type OptionType struct {
-	dialect dialect
-	TypeID  uint8
-}
+// OptionType identifies an LCP option, at least in the context of the
+// particular dialect of LCP being used - the same ID will have different
+// meanings in LCP, IPXCP, etc.
+type OptionType uint8
 
 var (
-	OptionMRU                       = OptionType{lcpDialect, 1}
-	OptionAuthProtocol              = OptionType{lcpDialect, 3}
-	OptionQualityProtocol           = OptionType{lcpDialect, 4}
-	OptionMagicNumber               = OptionType{lcpDialect, 5}
-	OptionProtocolFieldCompression  = OptionType{lcpDialect, 7}
-	OptionAddressControlCompression = OptionType{lcpDialect, 8}
+	OptionMRU                       = OptionType(1)
+	OptionAuthProtocol              = OptionType(3)
+	OptionQualityProtocol           = OptionType(4)
+	OptionMagicNumber               = OptionType(5)
+	OptionProtocolFieldCompression  = OptionType(7)
+	OptionAddressControlCompression = OptionType(8)
 )
 
 type Option struct {
@@ -80,7 +68,6 @@ type PerTypeData interface {
 
 // ConfigureData contains the data that is specific to Configure-* messages.
 type ConfigureData struct {
-	dialect dialect
 	Options []Option
 }
 
@@ -90,7 +77,7 @@ func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 		if len(data) < 3 {
 			return MessageTooShort
 		}
-		optType := OptionType{d.dialect, data[0]}
+		optType := OptionType(data[0])
 		optLen := binary.BigEndian.Uint16(data[1:3])
 		if int(optLen) > len(data) {
 			return MessageTooShort
@@ -134,7 +121,7 @@ func (d *EchoData) UnmarshalBinary(data []byte) error {
 // and other dialects that reuse the same format.
 type BaseLayer struct {
 	layers.BaseLayer
-	dialect    dialect
+	PPPType    layers.PPPType
 	Type       MessageType
 	Identifier uint8
 	Data       PerTypeData
@@ -153,7 +140,7 @@ func (l *BaseLayer) UnmarshalBinary(data []byte) error {
 
 	switch l.Type {
 	case ConfigureRequest, ConfigureAck, ConfigureNak, ConfigureReject:
-		l.Data = &ConfigureData{dialect: l.dialect}
+		l.Data = &ConfigureData{}
 	case TerminateRequest, TerminateAck:
 		l.Data = &TerminateData{}
 	case EchoRequest, EchoReply, DiscardRequest:
@@ -181,7 +168,7 @@ func (l *LCP) LayerType() gopacket.LayerType {
 
 func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
 	lcp := &LCP{}
-	lcp.dialect = lcpDialect
+	lcp.PPPType = PPPTypeLCP
 	if err := lcp.UnmarshalBinary(data); err != nil {
 		return err
 	}
