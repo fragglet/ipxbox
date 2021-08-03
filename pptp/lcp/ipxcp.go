@@ -14,4 +14,3 @@ var (
 	OptionIPXRouterName            = OptionType(5)
 	OptionIPXConfigurationComplete = OptionType(6)
 )
-

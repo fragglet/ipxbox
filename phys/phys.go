@@ -3,7 +3,7 @@
 package phys
 
 import (
-    "fmt"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -102,7 +102,7 @@ func (p *Phys) NonIPX() DuplexEthernetStream {
 		p.nonIPX = &nonIPX{
 			phys:   p,
 			frames: make(chan gopacket.Packet),
-			sb: gopacket.NewSerializeBuffer(),
+			sb:     gopacket.NewSerializeBuffer(),
 		}
 	}
 	return p.nonIPX
@@ -111,7 +111,7 @@ func (p *Phys) NonIPX() DuplexEthernetStream {
 type nonIPX struct {
 	phys   *Phys
 	frames chan gopacket.Packet
-	sb gopacket.SerializeBuffer
+	sb     gopacket.SerializeBuffer
 }
 
 func (ni *nonIPX) serializePacket(pkt gopacket.Packet) ([]byte, error) {
