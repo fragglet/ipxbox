@@ -117,17 +117,16 @@ func (d *EchoData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// BaseLayer represents the basic LCP layer used by LCP proper
-// and other dialects that reuse the same format.
-type BaseLayer struct {
+// LCP is a gopacket layer for the Link Control Protocol and and other
+// dialects that reuse the same wire format.
+type LCP struct {
 	layers.BaseLayer
-	PPPType    layers.PPPType
 	Type       MessageType
 	Identifier uint8
 	Data       PerTypeData
 }
 
-func (l *BaseLayer) UnmarshalBinary(data []byte) error {
+func (l *LCP) UnmarshalBinary(data []byte) error {
 	if len(data) < 4 {
 		return MessageTooShort
 	}
@@ -157,18 +156,12 @@ func (l *BaseLayer) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// LCP is a gopacket layer for the Link Control Protocol.
-type LCP struct {
-	BaseLayer
-}
-
 func (l *LCP) LayerType() gopacket.LayerType {
 	return LayerTypeLCP
 }
 
 func decodeLCP(data []byte, p gopacket.PacketBuilder) error {
 	lcp := &LCP{}
-	lcp.PPPType = PPPTypeLCP
 	if err := lcp.UnmarshalBinary(data); err != nil {
 		return err
 	}
@@ -184,7 +177,7 @@ func init() {
 		Name: "LCP",
 	}
 	layers.PPPTypeMetadata[PPPTypeIPXCP] = layers.EnumMetadata{
-		DecodeWith: gopacket.DecodeFunc(decodeIPXCP),
+		DecodeWith: gopacket.DecodeFunc(decodeLCP),
 		Name: "IPXCP",
 	}
 }
