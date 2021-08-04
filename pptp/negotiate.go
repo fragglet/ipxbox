@@ -3,6 +3,8 @@ package pptp
 import (
 	"bytes"
 	"github.com/fragglet/ipxbox/pptp/lcp"
+	"sync"
+	"time"
 
 	"github.com/google/gopacket"
 )
@@ -27,6 +29,9 @@ type negotiator struct {
 	localOptions, remoteOptions   map[lcp.OptionType]*option
 	sendPPP                       func(p []byte) error
 	localComplete, remoteComplete bool
+	requestSequence               uint8
+	requestSendTime               time.Time
+	mu                            sync.Mutex
 }
 
 func (n *negotiator) getLCP(pkt gopacket.Packet) *lcp.LCP {
@@ -124,6 +129,25 @@ func (n *negotiator) handleConfigureRequest(l *lcp.LCP) {
 	})
 }
 
+func (n *negotiator) sendConfigureRequest() {
+	opts := []lcp.Option{}
+	for ot, opt := range n.localOptions {
+		if opt.value != nil {
+			opts = append(opts, lcp.Option{
+				Type: ot,
+				Data: opt.value,
+			})
+		}
+	}
+	n.sendPacket(&lcp.LCP{
+		Type:       lcp.ConfigureRequest,
+		Identifier: n.requestSequence,
+		Data:       &lcp.ConfigureData{Options: opts},
+	})
+	n.requestSequence++
+	n.requestSendTime = time.Now()
+}
+
 // applyNewValues sets new values in localOptions, but first performs
 // validation that the new values are acceptable to us.
 func (n *negotiator) applyNewValues(values map[lcp.OptionType][]byte) {
@@ -155,7 +179,8 @@ func (n *negotiator) applyNewValues(values map[lcp.OptionType][]byte) {
 		o := n.localOptions[ot]
 		o.value = value
 	}
-	// TODO: Send a new Configure-Request.
+	// Send a new Configure-Request with our updated values.
+	n.sendConfigureRequest()
 }
 
 func (n *negotiator) handleConfigureReject(l *lcp.LCP) {
@@ -183,6 +208,8 @@ func (n *negotiator) handleConfigureNak(l *lcp.LCP) {
 }
 
 func (n *negotiator) recvPacket(pkt gopacket.Packet) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	l := n.getLCP(pkt)
 	if l == nil {
 		return
@@ -199,5 +226,30 @@ func (n *negotiator) recvPacket(pkt gopacket.Packet) {
 	}
 }
 
-// TODO: periodically send Configure-Request if no response
+// maybeSendRequest sends a new Configure-Request if it has been too long
+// since the last one was received.
+func (n *negotiator) maybeSendRequest() bool {
+	now := time.Now()
+	if now.After(n.requestSendTime.Add(requestTimeout)) {
+		n.sendConfigureRequest()
+	}
+}
+
+func (n *negotiator) startNegotiation() {
+	n.requestSequence = 1
+	for {
+		n.mu.Lock()
+		done := n.localComplete
+		// TODO: Stop in error cases, too.
+		if !done {
+			n.maybeSendRequest()
+		}
+		n.mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // TODO: state machine to track whether we have succeeded, failed, error, etc.
