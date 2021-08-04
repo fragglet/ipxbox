@@ -24,8 +24,8 @@ func (o *option) validateValue(value []byte) bool {
 }
 
 type negotiator struct {
-	localOptions                  map[lcp.OptionType]*option
-	remoteOptions                 map[lcp.OptionType]*option
+	localOptions, remoteOptions   map[lcp.OptionType]*option
+	sendPPP                       func(p []byte) error
 	localComplete, remoteComplete bool
 }
 
@@ -35,6 +35,17 @@ func (n *negotiator) getLCP(pkt gopacket.Packet) *lcp.LCP {
 		return nil
 	}
 	return l.(*lcp.LCP)
+}
+
+func (n *negotiator) sendPacket(l *lcp.LCP) {
+	payload, err := l.MarshalBinary()
+	if err != nil {
+		return
+	}
+	if err := n.sendPPP(payload); err != nil {
+		// TODO: log error?
+		return
+	}
 }
 
 func (n *negotiator) handleConfigureRequest(l *lcp.LCP) {
@@ -47,7 +58,14 @@ func (n *negotiator) handleConfigureRequest(l *lcp.LCP) {
 	}
 	if len(unknownOpts) > 0 {
 		// Some options are not recognized (not in remoteOptions).
-		// TODO: send Configure-Reject
+		n.sendPacket(&lcp.LCP{
+			Type:       lcp.ConfigureReject,
+			Identifier: l.Identifier,
+			Data: &lcp.ConfigureData{
+				Options: unknownOpts,
+			},
+		})
+		return
 	}
 	// Build up a complete map of all new values. Some may be missing.
 	newValues := make(map[lcp.OptionType][]byte)
@@ -66,14 +84,44 @@ func (n *negotiator) handleConfigureRequest(l *lcp.LCP) {
 	}
 	if len(badOpts) > 0 {
 		// Some options have been rejected by validators.
-		// TODO: send Configure-Nak
+		// We send back a list of them, with our suggested value.
+		replyOpts := []lcp.Option{}
+		for _, opt := range cd.Options {
+			if badOpts[opt.Type] {
+				replyOpts = append(replyOpts, lcp.Option{
+					Type: opt.Type,
+					Data: n.remoteOptions[opt.Type].value,
+				})
+			}
+		}
+		// Some options were required and missing?
+		for ot := range badOpts {
+			if newValues[ot] == nil {
+				replyOpts = append(replyOpts, lcp.Option{
+					Type: ot,
+					Data: n.remoteOptions[ot].value,
+				})
+			}
+		}
+		n.sendPacket(&lcp.LCP{
+			Type:       lcp.ConfigureNak,
+			Identifier: l.Identifier,
+			Data:       &lcp.ConfigureData{Options: replyOpts},
+		})
+		return
 	}
 	// Update with all new values.
 	for ot, value := range newValues {
 		n.remoteOptions[ot].value = value
 	}
-	// TODO: send Configure-Ack
 	n.remoteComplete = true
+
+	// Send ack with options that exactly match the request, as per RFC.
+	n.sendPacket(&lcp.LCP{
+		Type:       lcp.ConfigureAck,
+		Identifier: l.Identifier,
+		Data:       l.Data,
+	})
 }
 
 // applyNewValues sets new values in localOptions, but first performs
@@ -92,11 +140,13 @@ func (n *negotiator) applyNewValues(values map[lcp.OptionType][]byte) {
 		}
 	}
 	if len(unknownOpts) > 0 {
-		// Fail with error
+		// Client sent a Configure-Nak to request an option we don't
+		// recognize. So fail.
 		return
 	}
 	if len(rejectedOpts) > 0 {
-		// Fail with error
+		// Client rejected our value but recommended an alternative
+		// that we've rejected too. So fail.
 		return
 	}
 
