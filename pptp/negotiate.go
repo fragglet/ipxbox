@@ -2,11 +2,18 @@ package pptp
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/fragglet/ipxbox/pptp/lcp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/gopacket"
+)
+
+const (
+	maxConfigureRequests = 5
+	requestTimeout       = 1 * time.Second
 )
 
 type option struct {
@@ -32,6 +39,7 @@ type negotiator struct {
 	requestSequence               uint8
 	requestSendTime               time.Time
 	mu                            sync.Mutex
+	err                           error
 }
 
 func (n *negotiator) getLCP(pkt gopacket.Packet) *lcp.LCP {
@@ -48,7 +56,7 @@ func (n *negotiator) sendPacket(l *lcp.LCP) {
 		return
 	}
 	if err := n.sendPPP(payload); err != nil {
-		// TODO: log error?
+		n.err = err
 		return
 	}
 }
@@ -164,13 +172,19 @@ func (n *negotiator) applyNewValues(values map[lcp.OptionType][]byte) {
 		}
 	}
 	if len(unknownOpts) > 0 {
-		// Client sent a Configure-Nak to request an option we don't
-		// recognize. So fail.
+		n.err = fmt.Errorf("peer requested unrecognized options: %+v", unknownOpts)
 		return
 	}
 	if len(rejectedOpts) > 0 {
-		// Client rejected our value but recommended an alternative
-		// that we've rejected too. So fail.
+		optDescs := []string{}
+		for _, ot := range rejectedOpts {
+			desc := fmt.Sprintf("%+v for option %d", values[ot], ot)
+			if values[ot] == nil {
+				desc = fmt.Sprintf("rejected required option %d", ot)
+			}
+			optDescs = append(optDescs, desc)
+		}
+		n.err = fmt.Errorf("peer wanted unacceptable option values: %+v", strings.Join(optDescs, ";"))
 		return
 	}
 
@@ -207,9 +221,13 @@ func (n *negotiator) handleConfigureNak(l *lcp.LCP) {
 	n.applyNewValues(values)
 }
 
-func (n *negotiator) recvPacket(pkt gopacket.Packet) {
+func (n *negotiator) RecvPacket(pkt gopacket.Packet) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.err != nil {
+		// Once an error occurs, we stop any more packet processing.
+		return
+	}
 	l := n.getLCP(pkt)
 	if l == nil {
 		return
@@ -228,19 +246,24 @@ func (n *negotiator) recvPacket(pkt gopacket.Packet) {
 
 // maybeSendRequest sends a new Configure-Request if it has been too long
 // since the last one was received.
-func (n *negotiator) maybeSendRequest() bool {
+func (n *negotiator) maybeSendRequest() {
 	now := time.Now()
-	if now.After(n.requestSendTime.Add(requestTimeout)) {
-		n.sendConfigureRequest()
+	if now.Before(n.requestSendTime.Add(requestTimeout)) {
+		return
 	}
+	if n.requestSequence >= maxConfigureRequests+1 {
+		n.err = fmt.Errorf("failed to negotiate after sending %d Configure-Requests", maxConfigureRequests)
+		return
+	}
+	n.sendConfigureRequest()
 }
 
-func (n *negotiator) startNegotiation() {
+func (n *negotiator) StartNegotiation() {
 	n.requestSequence = 1
+	n.err = nil
 	for {
 		n.mu.Lock()
-		done := n.localComplete
-		// TODO: Stop in error cases, too.
+		done := n.localComplete || n.err != nil
 		if !done {
 			n.maybeSendRequest()
 		}
@@ -252,4 +275,9 @@ func (n *negotiator) startNegotiation() {
 	}
 }
 
-// TODO: state machine to track whether we have succeeded, failed, error, etc.
+func (n *negotiator) Done() (bool, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	done := n.localComplete && n.remoteComplete || n.err != nil
+	return done, n.err
+}
