@@ -1,3 +1,5 @@
+![ipxbox icon](images/ipxbox4x.png)
+
 `ipxbox` is a standalone DOSBox IPX server written in Go. DOSBox clients can
 connect to the server and play together.
 
