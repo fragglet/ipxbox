@@ -32,6 +32,18 @@ func (o *option) validateValue(value []byte) bool {
 	return o.validate(o, value)
 }
 
+// nonNegotiable is a validator function that rejects any change in value
+// whatsoever. Only the value we have provided is acceptable.
+func nonNegotiable(o *option, newValue []byte) bool {
+	return false
+}
+
+// requiredOption is a validator function that will accept any change except
+// if the new value is nil - ie. a value must be provided for this option.
+func requiredOption(o *option, newValue []byte) bool {
+	return newValue != nil
+}
+
 type negotiator struct {
 	localOptions, remoteOptions   map[lcp.OptionType]*option
 	sendPPP                       func(p []byte) error
