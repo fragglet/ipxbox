@@ -89,21 +89,20 @@ func (s *PPPSession) recvAndProcess() error {
 	}
 	pkt := gopacket.NewPacket(buf[:nbytes], layers.LayerTypePPP, gopacket.Default)
 	pppLayer := pkt.Layer(layers.LayerTypePPP)
-	if pppLayer != nil {
+	if pppLayer == nil {
 		// TODO: bad packet - log error?
 		return nil
 	}
 	ppp := pppLayer.(*layers.PPP)
 	if ppp.PPPType == PPPTypeIPX {
-		if _, err := s.upstream.Write(ppp.LayerPayload()); err != nil {
-			return err
-		}
-		return nil
+		_, err := s.upstream.Write(ppp.LayerPayload())
+		return err
 	}
 	// TODO: LCP special handling
 	n, ok := s.negotiators[ppp.PPPType]
 	if !ok {
-		return nil // unknown frame type
+		// TODO: send LCP Protocol-Reject
+		return nil
 	}
 	n.RecvPacket(pkt)
 	return nil
@@ -135,9 +134,7 @@ func (s *PPPSession) negotiate() error {
 			return nil
 		},
 	}
-	s.mu.Lock()
 	s.negotiators[lcp.PPPTypeLCP] = n
-	s.mu.Unlock()
 	go n.StartNegotiation()
 
 	for {
@@ -159,7 +156,10 @@ func (s *PPPSession) setState(state linkState) {
 	s.state = state
 }
 
-func (s *PPPSession) Run() {
+// run implements the main goroutine that establishes the PPP connection, does
+// negotiation and then runs the main loop that receives PPP frames and
+// forwards the encapsulated IPX frames upstream.
+func (s *PPPSession) run() {
 	if err := s.negotiate(); err != nil {
 		// TODO: Send terminate?
 		s.setState(terminate)
@@ -177,7 +177,7 @@ func StartPPPSession(channel, upstream io.ReadWriteCloser) *PPPSession {
 		upstream: upstream,
 	}
 	go s.sendPackets()
-	go s.Run()
+	go s.run()
 
 	return s
 }
