@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/pptp/lcp"
 
 	"github.com/google/gopacket"
@@ -20,15 +21,15 @@ const (
 type linkState uint8
 
 const (
-	dead linkState = iota
-	establish
-	authenticate
-	network
-	terminate
+	stateDead linkState = iota
+	stateEstablish
+	stateAuthenticate
+	stateNetwork
+	stateTerminate
 )
 
 type PPPSession struct {
-	upstream    io.ReadWriteCloser
+	node        network.Node
 	channel     io.ReadWriteCloser
 	mu          sync.Mutex // protects state
 	state       linkState
@@ -41,7 +42,7 @@ func (s *PPPSession) Close() error {
 
 func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) {
 	s.mu.Lock()
-	ok := s.state == network
+	ok := s.state == stateNetwork
 	s.mu.Unlock()
 	if !ok {
 		return
@@ -63,7 +64,7 @@ func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) {
 func (s *PPPSession) Terminated() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state == terminate || s.state == dead
+	return s.state == stateTerminate || s.state == stateDead
 }
 
 // sendPackets continually reads packets from upstream and forwards them over
@@ -71,7 +72,7 @@ func (s *PPPSession) Terminated() bool {
 func (s *PPPSession) sendPackets() {
 	var buf [1500]byte
 	for !s.Terminated() {
-		n, err := s.upstream.Read(buf[:])
+		n, err := s.node.Read(buf[:])
 		if err != nil {
 			break
 		}
@@ -95,7 +96,7 @@ func (s *PPPSession) recvAndProcess() error {
 	}
 	ppp := pppLayer.(*layers.PPP)
 	if ppp.PPPType == PPPTypeIPX {
-		_, err := s.upstream.Write(ppp.LayerPayload())
+		_, err := s.node.Write(ppp.LayerPayload())
 		return err
 	}
 	// TODO: LCP special handling
@@ -150,6 +151,50 @@ func (s *PPPSession) negotiate() error {
 	}
 }
 
+// negotiateIPX runs IPXCP negotiation phase of PPP link setup.
+func (s *PPPSession) negotiateIPX() error {
+	localOptions := map[lcp.OptionType]*option{
+		lcp.OptionIPXNetwork: &option{
+			value: []byte{0, 0, 0, 0},
+		},
+		lcp.OptionIPXNode: &option{
+			value: []byte{0, 0, 0, 0, 0, 0},
+		},
+	}
+	// TODO: Make address negotiable so that client can supply a
+	// desired address?
+	addr := s.node.Address()
+	remoteOptions := map[lcp.OptionType]*option{
+		lcp.OptionIPXNode: &option{
+			value:    addr[:],
+			validate: nonNegotiable,
+		},
+	}
+
+	n := &negotiator{
+		localOptions:  localOptions,
+		remoteOptions: remoteOptions,
+		sendPPP: func(p []byte) error {
+			s.sendPPP(p, lcp.PPPTypeIPXCP)
+			return nil
+		},
+	}
+	s.negotiators[lcp.PPPTypeIPXCP] = n
+	go n.StartNegotiation()
+
+	for {
+		if s.Terminated() {
+			return fmt.Errorf("link terminated during IPX protocol negotiation")
+		}
+		if done, err := n.Done(); done {
+			return err // may be nil
+		}
+		if err := s.recvAndProcess(); err != nil {
+			return err
+		}
+	}
+}
+
 func (s *PPPSession) setState(state linkState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -162,19 +207,23 @@ func (s *PPPSession) setState(state linkState) {
 func (s *PPPSession) run() {
 	if err := s.negotiate(); err != nil {
 		// TODO: Send terminate?
-		s.setState(terminate)
+		s.setState(stateTerminate)
 		return
 	}
-	// TODO: negotiate IPX
-	s.setState(network)
+	if err := s.negotiateIPX(); err != nil {
+		// TODO: Send terminate?
+		s.setState(stateTerminate)
+		return
+	}
+	s.setState(stateNetwork)
 	// TODO: forward packets to upstream
 }
 
-func StartPPPSession(channel, upstream io.ReadWriteCloser) *PPPSession {
+func StartPPPSession(channel io.ReadWriteCloser, node network.Node) *PPPSession {
 	s := &PPPSession{
-		state:    establish,
-		channel:  channel,
-		upstream: upstream,
+		state:   stateEstablish,
+		channel: channel,
+		node:    node,
 	}
 	go s.sendPackets()
 	go s.run()
