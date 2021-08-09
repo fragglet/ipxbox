@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	PPPTypeIPX layers.PPPType = 0x802b
+	PPPTypeIPX layers.PPPType = 0x002b
 )
 
 type linkState uint8
