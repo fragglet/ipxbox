@@ -74,17 +74,17 @@ type ConfigureData struct {
 func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 	result := []Option{}
 	for len(data) > 0 {
-		if len(data) < 3 {
+		if len(data) < 2 {
 			return MessageTooShort
 		}
 		optType := OptionType(data[0])
-		optLen := binary.BigEndian.Uint16(data[1:3])
+		optLen := data[1]
 		if int(optLen) > len(data) {
 			return MessageTooShort
 		}
 		result = append(result, Option{
 			Type: optType,
-			Data: data[3:optLen],
+			Data: data[2:optLen],
 		})
 		data = data[optLen:]
 	}
