@@ -95,9 +95,8 @@ func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 func (d *ConfigureData) MarshalBinary() (data []byte, err error) {
 	result := []byte{}
 	for _, opt := range d.Options {
-		optBytes := []byte{byte(opt.Type), 0, 0}
-		binary.BigEndian.PutUint16(optBytes[1:3], uint16(len(opt.Data)+3))
-		result = append(result, optBytes...)
+		result = append(result, byte(opt.Type), uint8(len(opt.Data) + 2))
+		result = append(result, opt.Data...)
 	}
 	return result, nil
 }
