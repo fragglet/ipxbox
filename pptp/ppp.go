@@ -40,12 +40,12 @@ func (s *PPPSession) Close() error {
 	return s.channel.Close()
 }
 
-func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) {
+func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) error {
 	s.mu.Lock()
 	ok := s.state == stateNetwork
 	s.mu.Unlock()
 	if !ok {
-		return
+		return nil
 	}
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
@@ -56,9 +56,8 @@ func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) {
 		},
 		gopacket.Payload(payload),
 	)
-	if _, err := s.channel.Write(buf.Bytes()); err != nil {
-		// TODO: log error?
-	}
+	_, err := s.channel.Write(buf.Bytes())
+	return err
 }
 
 func (s *PPPSession) Terminated() bool {
@@ -76,7 +75,9 @@ func (s *PPPSession) sendPackets() {
 		if err != nil {
 			break
 		}
-		s.sendPPP(buf[:n], PPPTypeIPX)
+		if err := s.sendPPP(buf[:n], PPPTypeIPX); err != nil {
+			break
+		}
 	}
 }
 
@@ -131,8 +132,7 @@ func (s *PPPSession) negotiate() error {
 		localOptions:  localOptions,
 		remoteOptions: remoteOptions,
 		sendPPP: func(p []byte) error {
-			s.sendPPP(p, lcp.PPPTypeLCP)
-			return nil
+			return s.sendPPP(p, lcp.PPPTypeLCP)
 		},
 	}
 	s.negotiators[lcp.PPPTypeLCP] = n
@@ -175,8 +175,7 @@ func (s *PPPSession) negotiateIPX() error {
 		localOptions:  localOptions,
 		remoteOptions: remoteOptions,
 		sendPPP: func(p []byte) error {
-			s.sendPPP(p, lcp.PPPTypeIPXCP)
-			return nil
+			return s.sendPPP(p, lcp.PPPTypeIPXCP)
 		},
 	}
 	s.negotiators[lcp.PPPTypeIPXCP] = n
@@ -193,6 +192,16 @@ func (s *PPPSession) negotiateIPX() error {
 			return err
 		}
 	}
+}
+
+func (s *PPPSession) runNetwork() error {
+	s.setState(stateNetwork)
+	for !s.Terminated() {
+		if err := s.recvAndProcess(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *PPPSession) setState(state linkState) {
@@ -215,15 +224,17 @@ func (s *PPPSession) run() {
 		s.setState(stateTerminate)
 		return
 	}
-	s.setState(stateNetwork)
-	// TODO: forward packets to upstream
+	if err := s.runNetwork(); err != nil {
+		return
+	}
 }
 
 func StartPPPSession(channel io.ReadWriteCloser, node network.Node) *PPPSession {
 	s := &PPPSession{
-		state:   stateEstablish,
-		channel: channel,
-		node:    node,
+		state:       stateEstablish,
+		channel:     channel,
+		node:        node,
+		negotiators: make(map[layers.PPPType]*negotiator),
 	}
 	go s.sendPackets()
 	go s.run()
