@@ -8,9 +8,9 @@ package pptp
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"log"
 	"net"
+
+	"github.com/fragglet/ipxbox/network"
 )
 
 const (
@@ -40,6 +40,8 @@ type Connection struct {
 	callID uint16
 	conn   net.Conn
 	gre    *greSession
+	ppp    *PPPSession
+	s      *Server
 }
 
 func (c *Connection) sendMessage(msg []byte) {
@@ -90,16 +92,20 @@ func (c *Connection) handleEcho(msg []byte) {
 	c.sendMessage(reply)
 }
 
-func logPackets(src io.Reader) {
-	var recvbuf [1500]byte
-	for {
-		n, err := src.Read(recvbuf[:])
-		if err != nil {
-			log.Printf("error reading from GRE: %v", err)
-			break
-		}
-		log.Printf("got GRE PPP frame: %+v", recvbuf[:n])
+func (c *Connection) startPPPSession(sendCallID uint16) {
+	if c.gre != nil {
+		return
 	}
+	addr := c.conn.RemoteAddr().(*net.TCPAddr)
+	var err error
+	c.gre, err = startGRESession(addr.IP, sendCallID, c.callID)
+	if err != nil {
+		// TODO: Send back error message? Log error?
+		c.conn.Close()
+		return
+	}
+	node := c.s.n.NewNode()
+	c.ppp = StartPPPSession(c.gre, node)
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
@@ -107,20 +113,8 @@ func (c *Connection) handleOutgoingCall(msg []byte) {
 		return
 	}
 	// Start up GRE session if we have not already.
-	if c.gre == nil {
-		addr := c.conn.RemoteAddr().(*net.TCPAddr)
-		sendCallID := binary.BigEndian.Uint16(msg[10:12])
-		var err error
-		c.gre, err = startGRESession(addr.IP, sendCallID, c.callID)
-		if err != nil {
-			// TODO: Send back error message? Log error?
-			c.conn.Close()
-			return
-		}
-		// TODO: Handle incoming PPP session rather than printing packets
-		go logPackets(c.gre)
-	}
-
+	sendCallID := binary.BigEndian.Uint16(msg[10:12])
+	c.startPPPSession(sendCallID)
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
@@ -196,10 +190,12 @@ messageLoop:
 	if c.gre != nil {
 		c.gre.Close()
 	}
+	// TODO: Close PPP session
 }
 
-func newConnection(conn net.Conn, callID uint16) *Connection {
+func newConnection(s *Server, conn net.Conn, callID uint16) *Connection {
 	return &Connection{
+		s:      s,
 		conn:   conn,
 		callID: callID,
 	}
@@ -209,6 +205,7 @@ func newConnection(conn net.Conn, callID uint16) *Connection {
 type Server struct {
 	listener   *net.TCPListener
 	nextCallID uint16
+	n          network.Network
 }
 
 // Run listens for and accepts new connections to the server. It blocks until
@@ -219,7 +216,7 @@ func (s *Server) Run() {
 		if err != nil {
 			break
 		}
-		c := newConnection(conn, s.nextCallID)
+		c := newConnection(s, conn, s.nextCallID)
 		go c.run()
 		s.nextCallID = (s.nextCallID + 1) & 0xffff
 	}
@@ -230,7 +227,7 @@ func (s *Server) Close() error {
 	return s.listener.Close()
 }
 
-func NewServer() (*Server, error) {
+func NewServer(n network.Network) (*Server, error) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: pptpPort,
 	})
@@ -240,5 +237,6 @@ func NewServer() (*Server, error) {
 	return &Server{
 		listener:   listener,
 		nextCallID: 384,
+		n:          n,
 	}, nil
 }
