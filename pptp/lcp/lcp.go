@@ -137,6 +137,28 @@ func (d *EchoData) MarshalBinary() (data []byte, err error) {
 	return result, nil
 }
 
+// ProtocolRejectData contains data that is sent in Protocol-Reject messages.
+type ProtocolRejectData struct {
+	PPPType layers.PPPType
+	Data []byte
+}
+
+func (d *ProtocolRejectData) UnmarshalBinary(data []byte) error {
+	if len(data) < 2 {
+		return MessageTooShort
+	}
+	d.PPPType = layers.PPPType(binary.BigEndian.Uint16(data[:2]))
+	d.Data = data[2:]
+	return nil
+}
+
+func (d *ProtocolRejectData) MarshalBinary() ([]byte, error) {
+	result := []byte{0, 0}
+	binary.BigEndian.PutUint16(result[:], uint16(d.PPPType))
+	result = append(result, d.Data...)
+	return result, nil
+}
+
 // LCP is a gopacket layer for the Link Control Protocol and and other
 // dialects that reuse the same wire format.
 type LCP struct {
@@ -164,6 +186,8 @@ func (l *LCP) UnmarshalBinary(data []byte) error {
 		l.Data = &TerminateData{}
 	case EchoRequest, EchoReply, DiscardRequest:
 		l.Data = &EchoData{}
+	case ProtocolReject:
+		l.Data = &ProtocolRejectData{}
 		// TODO: Other message types.
 	}
 	if l.Data != nil {
