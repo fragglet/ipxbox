@@ -95,7 +95,7 @@ func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 func (d *ConfigureData) MarshalBinary() (data []byte, err error) {
 	result := []byte{}
 	for _, opt := range d.Options {
-		result = append(result, byte(opt.Type), uint8(len(opt.Data) + 2))
+		result = append(result, byte(opt.Type), uint8(len(opt.Data)+2))
 		result = append(result, opt.Data...)
 	}
 	return result, nil
@@ -140,7 +140,7 @@ func (d *EchoData) MarshalBinary() (data []byte, err error) {
 // ProtocolRejectData contains data that is sent in Protocol-Reject messages.
 type ProtocolRejectData struct {
 	PPPType layers.PPPType
-	Data []byte
+	Data    []byte
 }
 
 func (d *ProtocolRejectData) UnmarshalBinary(data []byte) error {
