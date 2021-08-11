@@ -10,6 +10,7 @@ import (
 	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/phys"
+	"github.com/fragglet/ipxbox/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/syslog"
@@ -37,6 +38,7 @@ var (
 	enableIpxpkt    = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
 	enableSyslog    = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 	quakeServers    = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
+	enablePPTP      = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
 
 func printPackets(v *virtual.Network) {
@@ -133,6 +135,13 @@ func main() {
 		go printPackets(v)
 	}
 	addQuakeProxies(v)
+	if *enablePPTP {
+		pptps, err := pptp.NewServer(v)
+		if err != nil {
+			log.Fatal("failed to start PPTP server: %v", err)
+		}
+		go pptps.Run()
+	}
 	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
 	if err != nil {
 		log.Fatal(err)
