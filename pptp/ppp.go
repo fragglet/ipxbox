@@ -29,11 +29,12 @@ const (
 )
 
 type PPPSession struct {
-	node        network.Node
-	channel     io.ReadWriteCloser
-	mu          sync.Mutex // protects state
-	state       linkState
-	negotiators map[layers.PPPType]*negotiator
+	node               network.Node
+	channel            io.ReadWriteCloser
+	mu                 sync.Mutex // protects state
+	state              linkState
+	negotiators        map[layers.PPPType]*negotiator
+	numProtocolRejects uint8
 }
 
 func (s *PPPSession) Close() error {
@@ -104,7 +105,20 @@ func (s *PPPSession) recvAndProcess() error {
 	// TODO: LCP special handling
 	n, ok := s.negotiators[ppp.PPPType]
 	if !ok {
-		// TODO: send LCP Protocol-Reject
+		reject := &lcp.LCP{
+			Type:       lcp.ProtocolReject,
+			Identifier: s.numProtocolRejects,
+			Data: &lcp.ProtocolRejectData{
+				PPPType: ppp.PPPType,
+				Data:    ppp.LayerPayload(),
+			},
+		}
+		s.numProtocolRejects++
+		payload, err := reject.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		s.sendPPP(payload, lcp.PPPTypeLCP)
 		return nil
 	}
 	n.RecvPacket(pkt)
