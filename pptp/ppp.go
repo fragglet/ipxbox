@@ -41,12 +41,6 @@ func (s *PPPSession) Close() error {
 }
 
 func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) error {
-	s.mu.Lock()
-	ok := s.state == stateNetwork
-	s.mu.Unlock()
-	if !ok {
-		return nil
-	}
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	gopacket.SerializeLayers(buf, opts,
@@ -74,6 +68,13 @@ func (s *PPPSession) sendPackets() {
 		n, err := s.node.Read(buf[:])
 		if err != nil {
 			break
+		}
+		s.mu.Lock()
+		ok := s.state == stateNetwork
+		s.mu.Unlock()
+		if !ok {
+			// Not yet in network state
+			continue
 		}
 		if err := s.sendPPP(buf[:n], PPPTypeIPX); err != nil {
 			break
