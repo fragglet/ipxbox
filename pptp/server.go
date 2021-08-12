@@ -132,7 +132,12 @@ func (c *Connection) handleOutgoingCall(msg []byte) {
 	}
 	// Call ID.
 	binary.BigEndian.PutUint16(reply[10:12], c.callID)
-	// Connect speed = maximum speed
+	// We deliberately set the receive window size to a large value (1024
+	// packets). We never want the client to stop sending packets because
+	// it's waiting for an ack. For the old games we're targeting, we can
+	// expect to never reach the bandwidth limit on modern networks.
+	binary.BigEndian.PutUint16(reply[22:24], 1024)
+	// Connect speed = maximum speed. Same deal.
 	copy(reply[18:22], msg[18:22])
 	// Copy peer's call ID.
 	copy(reply[12:14], msg[10:12])
