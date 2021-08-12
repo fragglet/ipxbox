@@ -1,6 +1,7 @@
 package pptp
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/rand"
@@ -35,6 +36,7 @@ type PPPSession struct {
 	state              linkState
 	negotiators        map[layers.PPPType]*negotiator
 	numProtocolRejects uint8
+	magicNumber        uint32
 }
 
 func (s *PPPSession) Close() error {
@@ -53,6 +55,14 @@ func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) error {
 	)
 	_, err := s.channel.Write(buf.Bytes())
 	return err
+}
+
+func (s *PPPSession) sendLCP(l *lcp.LCP) error {
+	payload, err := l.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	return s.sendPPP(payload, lcp.PPPTypeLCP)
 }
 
 func (s *PPPSession) Terminated() bool {
@@ -83,6 +93,26 @@ func (s *PPPSession) sendPackets() {
 	}
 }
 
+func (s *PPPSession) handleLCP(l *lcp.LCP) bool {
+	switch l.Type {
+	case lcp.TerminateRequest:
+		// TODO
+	case lcp.ProtocolReject:
+		// TODO: Send terminate
+	case lcp.EchoRequest:
+		s.sendLCP(&lcp.LCP{
+			Type:       lcp.EchoReply,
+			Identifier: l.Identifier,
+			Data: &lcp.EchoData{
+				MagicNumber: s.magicNumber,
+			},
+		})
+	default:
+		return false
+	}
+	return true
+}
+
 // recvAndProcess waits until a PPP frame is received and processes it.
 func (s *PPPSession) recvAndProcess() error {
 	var buf [1500]byte
@@ -102,23 +132,26 @@ func (s *PPPSession) recvAndProcess() error {
 		_, err := s.node.Write(ppp.LayerPayload())
 		return err
 	}
-	// TODO: LCP special handling
+	if ppp.PPPType == lcp.PPPTypeLCP {
+		l := pkt.Layer(lcp.LayerTypeLCP)
+		if l == nil {
+			return nil
+		}
+		if s.handleLCP(l.(*lcp.LCP)) {
+			return nil
+		}
+	}
 	n, ok := s.negotiators[ppp.PPPType]
 	if !ok {
-		reject := &lcp.LCP{
+		s.sendLCP(&lcp.LCP{
 			Type:       lcp.ProtocolReject,
 			Identifier: s.numProtocolRejects,
 			Data: &lcp.ProtocolRejectData{
 				PPPType: ppp.PPPType,
 				Data:    ppp.LayerPayload(),
 			},
-		}
+		})
 		s.numProtocolRejects++
-		payload, err := reject.MarshalBinary()
-		if err != nil {
-			return err
-		}
-		s.sendPPP(payload, lcp.PPPTypeLCP)
 		return nil
 	}
 	n.RecvPacket(pkt)
@@ -158,12 +191,18 @@ func (s *PPPSession) negotiate() error {
 			return fmt.Errorf("link terminated during negotiation phase")
 		}
 		if done, err := n.Done(); done {
-			return err // may be nil
+			if err != nil {
+				return err
+			}
+			break
 		}
 		if err := s.recvAndProcess(); err != nil {
 			return err
 		}
 	}
+	// Negotiation successful
+	s.magicNumber = binary.BigEndian.Uint32(magicNumber)
+	return nil
 }
 
 // negotiateIPX runs IPXCP negotiation phase of PPP link setup.
