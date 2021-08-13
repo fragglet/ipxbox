@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/gopacket"
 	"github.com/fragglet/ipxbox/ppp/lcp"
+	"github.com/google/gopacket"
 )
 
 const (
