@@ -19,6 +19,16 @@ const (
 	PPPTypeIPX layers.PPPType = 0x002b
 )
 
+var (
+	// supportedProtocols defines all the PPP protocol types that we
+	// support. Any other type triggers a Protocol-Reject response.
+	supportedProtocols = map[layers.PPPType]bool{
+		PPPTypeIPX:       true,
+		lcp.PPPTypeIPXCP: true,
+		lcp.PPPTypeLCP:   true,
+	}
+)
+
 type linkState uint8
 
 const (
@@ -128,6 +138,19 @@ func (s *Session) recvAndProcess() error {
 		return nil
 	}
 	ppp := pppLayer.(*layers.PPP)
+	if !supportedProtocols[ppp.PPPType] {
+		s.sendLCP(&lcp.LCP{
+			Type:       lcp.ProtocolReject,
+			Identifier: s.numProtocolRejects,
+			Data: &lcp.ProtocolRejectData{
+				PPPType: ppp.PPPType,
+				Data:    ppp.LayerPayload(),
+			},
+		})
+		s.numProtocolRejects++
+		return nil
+	}
+
 	if ppp.PPPType == PPPTypeIPX {
 		_, err := s.node.Write(ppp.LayerPayload())
 		return err
@@ -141,20 +164,9 @@ func (s *Session) recvAndProcess() error {
 			return nil
 		}
 	}
-	n, ok := s.negotiators[ppp.PPPType]
-	if !ok {
-		s.sendLCP(&lcp.LCP{
-			Type:       lcp.ProtocolReject,
-			Identifier: s.numProtocolRejects,
-			Data: &lcp.ProtocolRejectData{
-				PPPType: ppp.PPPType,
-				Data:    ppp.LayerPayload(),
-			},
-		})
-		s.numProtocolRejects++
-		return nil
+	if n, ok := s.negotiators[ppp.PPPType]; ok {
+		n.RecvPacket(pkt)
 	}
-	n.RecvPacket(pkt)
 	return nil
 }
 
