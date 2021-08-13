@@ -50,7 +50,7 @@ the server. If this happens, it is possible that you don't have the IPX
 protocol installed. To check, go to Control Panel → Network, and check
 the list of network components.
 
-![Network Settings dialog](images/networking-settings.png)
+![Network Settings dialog](images/network-settings.png)
 
 Check that at least the following are present:
 
