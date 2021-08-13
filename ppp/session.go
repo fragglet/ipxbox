@@ -29,7 +29,7 @@ const (
 	stateTerminate
 )
 
-type PPPSession struct {
+type Session struct {
 	node               network.Node
 	channel            io.ReadWriteCloser
 	mu                 sync.Mutex // protects state
@@ -39,11 +39,11 @@ type PPPSession struct {
 	magicNumber        uint32
 }
 
-func (s *PPPSession) Close() error {
+func (s *Session) Close() error {
 	return s.channel.Close()
 }
 
-func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) error {
+func (s *Session) sendPPP(payload []byte, pppType layers.PPPType) error {
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	gopacket.SerializeLayers(buf, opts,
@@ -57,7 +57,7 @@ func (s *PPPSession) sendPPP(payload []byte, pppType layers.PPPType) error {
 	return err
 }
 
-func (s *PPPSession) sendLCP(l *lcp.LCP) error {
+func (s *Session) sendLCP(l *lcp.LCP) error {
 	payload, err := l.MarshalBinary()
 	if err != nil {
 		return err
@@ -65,7 +65,7 @@ func (s *PPPSession) sendLCP(l *lcp.LCP) error {
 	return s.sendPPP(payload, lcp.PPPTypeLCP)
 }
 
-func (s *PPPSession) Terminated() bool {
+func (s *Session) Terminated() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state == stateTerminate || s.state == stateDead
@@ -73,7 +73,7 @@ func (s *PPPSession) Terminated() bool {
 
 // sendPackets continually reads packets from upstream and forwards them over
 // the PPP channel.
-func (s *PPPSession) sendPackets() {
+func (s *Session) sendPackets() {
 	var buf [1500]byte
 	for !s.Terminated() {
 		n, err := s.node.Read(buf[:])
@@ -93,7 +93,7 @@ func (s *PPPSession) sendPackets() {
 	}
 }
 
-func (s *PPPSession) handleLCP(l *lcp.LCP) bool {
+func (s *Session) handleLCP(l *lcp.LCP) bool {
 	switch l.Type {
 	case lcp.TerminateRequest:
 		// TODO
@@ -114,7 +114,7 @@ func (s *PPPSession) handleLCP(l *lcp.LCP) bool {
 }
 
 // recvAndProcess waits until a PPP frame is received and processes it.
-func (s *PPPSession) recvAndProcess() error {
+func (s *Session) recvAndProcess() error {
 	var buf [1500]byte
 	// TODO: Timeout
 	nbytes, err := s.channel.Read(buf[:])
@@ -159,7 +159,7 @@ func (s *PPPSession) recvAndProcess() error {
 }
 
 // negotiate runs the basic LCP negotiation phase of PPP link setup.
-func (s *PPPSession) negotiate() error {
+func (s *Session) negotiate() error {
 	magicNumber := []byte{0, 0, 0, 0}
 	rand.Seed(time.Now().Unix())
 	rand.Read(magicNumber)
@@ -206,7 +206,7 @@ func (s *PPPSession) negotiate() error {
 }
 
 // negotiateIPX runs IPXCP negotiation phase of PPP link setup.
-func (s *PPPSession) negotiateIPX() error {
+func (s *Session) negotiateIPX() error {
 	localOptions := map[lcp.OptionType]*option{
 		lcp.OptionIPXNetwork: &option{
 			value: []byte{0, 0, 0, 0},
@@ -248,7 +248,7 @@ func (s *PPPSession) negotiateIPX() error {
 	}
 }
 
-func (s *PPPSession) runNetwork() error {
+func (s *Session) runNetwork() error {
 	s.setState(stateNetwork)
 	for !s.Terminated() {
 		if err := s.recvAndProcess(); err != nil {
@@ -258,7 +258,7 @@ func (s *PPPSession) runNetwork() error {
 	return nil
 }
 
-func (s *PPPSession) setState(state linkState) {
+func (s *Session) setState(state linkState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = state
@@ -267,7 +267,7 @@ func (s *PPPSession) setState(state linkState) {
 // run implements the main goroutine that establishes the PPP connection, does
 // negotiation and then runs the main loop that receives PPP frames and
 // forwards the encapsulated IPX frames upstream.
-func (s *PPPSession) run() {
+func (s *Session) run() {
 	if err := s.negotiate(); err != nil {
 		// TODO: Send terminate?
 		s.setState(stateTerminate)
@@ -283,8 +283,8 @@ func (s *PPPSession) run() {
 	}
 }
 
-func StartPPPSession(channel io.ReadWriteCloser, node network.Node) *PPPSession {
-	s := &PPPSession{
+func StartSession(channel io.ReadWriteCloser, node network.Node) *Session {
+	s := &Session{
 		state:       stateEstablish,
 		channel:     channel,
 		node:        node,

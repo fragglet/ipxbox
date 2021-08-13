@@ -41,7 +41,7 @@ type Connection struct {
 	callID uint16
 	conn   net.Conn
 	gre    *greSession
-	ppp    *ppp.PPPSession
+	ppp    *ppp.Session
 	s      *Server
 }
 
@@ -106,7 +106,7 @@ func (c *Connection) startPPPSession(sendCallID uint16) {
 		return
 	}
 	node := c.s.n.NewNode()
-	c.ppp = ppp.StartPPPSession(c.gre, node)
+	c.ppp = ppp.StartSession(c.gre, node)
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
