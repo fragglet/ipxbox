@@ -1,14 +1,14 @@
-package pptp
+package ppp
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/fragglet/ipxbox/pptp/lcp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/fragglet/ipxbox/ppp/lcp"
 )
 
 const (

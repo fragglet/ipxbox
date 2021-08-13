@@ -11,6 +11,7 @@ import (
 	"net"
 
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/ppp"
 )
 
 const (
@@ -40,7 +41,7 @@ type Connection struct {
 	callID uint16
 	conn   net.Conn
 	gre    *greSession
-	ppp    *PPPSession
+	ppp    *ppp.PPPSession
 	s      *Server
 }
 
@@ -105,7 +106,7 @@ func (c *Connection) startPPPSession(sendCallID uint16) {
 		return
 	}
 	node := c.s.n.NewNode()
-	c.ppp = StartPPPSession(c.gre, node)
+	c.ppp = ppp.StartPPPSession(c.gre, node)
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {

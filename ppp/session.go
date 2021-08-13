@@ -1,4 +1,4 @@
-package pptp
+package ppp
 
 import (
 	"encoding/binary"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/fragglet/ipxbox/network"
-	"github.com/fragglet/ipxbox/pptp/lcp"
+	"github.com/fragglet/ipxbox/ppp/lcp"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"

@@ -10,7 +10,7 @@ import (
 	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/phys"
-	"github.com/fragglet/ipxbox/pptp"
+	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/syslog"
