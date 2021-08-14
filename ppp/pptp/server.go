@@ -40,7 +40,6 @@ const (
 type Connection struct {
 	callID uint16
 	conn   net.Conn
-	gre    *greSession
 	ppp    *ppp.Session
 	s      *Server
 }
@@ -94,19 +93,19 @@ func (c *Connection) handleEcho(msg []byte) {
 }
 
 func (c *Connection) startPPPSession(sendCallID uint16) {
-	if c.gre != nil {
+	if c.ppp != nil {
 		return
 	}
 	addr := c.conn.RemoteAddr().(*net.TCPAddr)
 	var err error
-	c.gre, err = startGRESession(addr.IP, sendCallID, c.callID)
+	gre, err := startGRESession(addr.IP, sendCallID, c.callID)
 	if err != nil {
 		// TODO: Send back error message? Log error?
 		c.conn.Close()
 		return
 	}
 	node := c.s.n.NewNode()
-	c.ppp = ppp.StartSession(c.gre, node)
+	c.ppp = ppp.StartSession(gre, node)
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
@@ -193,10 +192,9 @@ messageLoop:
 		}
 	}
 	c.conn.Close()
-	if c.gre != nil {
-		c.gre.Close()
+	if c.ppp != nil {
+		c.ppp.Close()
 	}
-	// TODO: Close PPP session
 }
 
 func newConnection(s *Server, conn net.Conn, callID uint16) *Connection {

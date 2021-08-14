@@ -50,6 +50,7 @@ type Session struct {
 }
 
 func (s *Session) Close() error {
+	s.node.Close()
 	return s.channel.Close()
 }
 
