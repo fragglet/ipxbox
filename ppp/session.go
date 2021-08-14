@@ -2,9 +2,11 @@ package ppp
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +49,7 @@ type Session struct {
 	negotiators        map[layers.PPPType]*negotiator
 	numProtocolRejects uint8
 	magicNumber        uint32
+	terminateError     error
 }
 
 func (s *Session) Close() error {
@@ -107,9 +110,19 @@ func (s *Session) sendPackets() {
 func (s *Session) handleLCP(l *lcp.LCP) bool {
 	switch l.Type {
 	case lcp.TerminateRequest:
-		// TODO
+		// Send ack and then immediately shut down.
+		s.sendLCP(&lcp.LCP{
+			Type:       lcp.TerminateAck,
+			Identifier: l.Identifier,
+		})
+		s.Close()
 	case lcp.ProtocolReject:
-		// TODO: Send terminate
+		// All the protocols we support are mandatory for the client to
+		// support. More specifically if they don't support IPX they
+		// won't be able to do anything useful here.
+		prd := l.Data.(*lcp.ProtocolRejectData)
+		err := fmt.Errorf("protocol %v must be supported to use this server", prd.PPPType)
+		s.Terminate(err)
 	case lcp.EchoRequest:
 		s.sendLCP(&lcp.LCP{
 			Type:       lcp.EchoReply,
@@ -127,7 +140,7 @@ func (s *Session) handleLCP(l *lcp.LCP) bool {
 // recvAndProcess waits until a PPP frame is received and processes it.
 func (s *Session) recvAndProcess() error {
 	var buf [1500]byte
-	// TODO: Timeout
+	// TODO: Send Echo-Requests when link idle, and time out eventually
 	nbytes, err := s.channel.Read(buf[:])
 	if err != nil {
 		return err
@@ -153,8 +166,10 @@ func (s *Session) recvAndProcess() error {
 	}
 
 	if ppp.PPPType == PPPTypeIPX {
-		_, err := s.node.Write(ppp.LayerPayload())
-		return err
+		s.node.Write(ppp.LayerPayload())
+		// Don't return error; it may have just been a filtered
+		// packet.
+		return nil
 	}
 	if ppp.PPPType == lcp.PPPTypeLCP {
 		l := pkt.Layer(lcp.LayerTypeLCP)
@@ -271,40 +286,77 @@ func (s *Session) runNetwork() error {
 	return nil
 }
 
-func (s *Session) setState(state linkState) {
+// setState changes the session state; false is returned if it is already
+// in that state.
+func (s *Session) setState(state linkState) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.state == state {
+		return false
+	}
 	s.state = state
+	return true
 }
 
-// run implements the main goroutine that establishes the PPP connection, does
-// negotiation and then runs the main loop that receives PPP frames and
-// forwards the encapsulated IPX frames upstream.
-func (s *Session) run() {
-	if err := s.negotiate(); err != nil {
-		// TODO: Send terminate?
-		s.setState(stateTerminate)
+// Terminate initiates the link shutdown process by sending a Terminate-Request
+// to the client and then calling Close().
+func (s *Session) Terminate(err error) {
+	if !s.setState(stateTerminate) {
 		return
+	}
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	s.sendLCP(&lcp.LCP{
+		Type: lcp.TerminateRequest,
+		Data: &lcp.TerminateData{
+			Data: []byte(msg),
+		},
+	})
+	s.Close()
+	s.terminateError = err
+}
+
+func (s *Session) doRun() error {
+	if err := s.negotiate(); err != nil {
+		return err
 	}
 	if err := s.negotiateIPX(); err != nil {
-		// TODO: Send terminate?
-		s.setState(stateTerminate)
-		return
+		return err
 	}
 	if err := s.runNetwork(); err != nil {
-		return
+		return err
 	}
+	return nil
 }
 
-func StartSession(channel io.ReadWriteCloser, node network.Node) *Session {
-	s := &Session{
+// Run implements the main goroutine that establishes the PPP connection, does
+// negotiation and then runs the main loop that receives PPP frames and
+// forwards the encapsulated IPX frames upstream. When it returns, the session
+// has terminated (either normally or due to failure to negotiate).
+func (s *Session) Run() error {
+	go s.sendPackets()
+	err := s.doRun()
+	// If the error is because the connection was closed or the node was
+	// shut down, ignore it. This is a normal part of shutdown process.
+	// TODO: Use net.ErrClosed; it is too new at time of writing
+	if errors.Is(err, io.ErrClosedPipe) || err != nil && strings.Contains(err.Error(), "closed") {
+		err = nil
+	}
+	if s.terminateError != nil {
+		err = s.terminateError
+	} else {
+		s.Terminate(err)
+	}
+	return err
+}
+
+func NewSession(channel io.ReadWriteCloser, node network.Node) *Session {
+	return &Session{
 		state:       stateEstablish,
 		channel:     channel,
 		node:        node,
 		negotiators: make(map[layers.PPPType]*negotiator),
 	}
-	go s.sendPackets()
-	go s.run()
-
-	return s
 }

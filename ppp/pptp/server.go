@@ -92,6 +92,22 @@ func (c *Connection) handleEcho(msg []byte) {
 	c.sendMessage(reply)
 }
 
+func (c *Connection) Close() error {
+	err1 := c.conn.Close()
+	var err2 error
+	if c.ppp != nil {
+		err2 = c.ppp.Close()
+	}
+	switch {
+	case err1 != nil:
+		return err1
+	case err2 != nil:
+		return err2
+	default:
+		return nil
+	}
+}
+
 func (c *Connection) startPPPSession(sendCallID uint16) {
 	if c.ppp != nil {
 		return
@@ -105,7 +121,16 @@ func (c *Connection) startPPPSession(sendCallID uint16) {
 		return
 	}
 	node := c.s.n.NewNode()
-	c.ppp = ppp.StartSession(gre, node)
+	c.ppp = ppp.NewSession(gre, node)
+	go func() {
+		err := c.ppp.Run()
+		if err != nil {
+			// TODO: log error?
+		}
+		// Once the PPP session terminates, close the PPTP control
+		// connection as well.
+		c.Close()
+	}()
 }
 
 func (c *Connection) handleOutgoingCall(msg []byte) {
@@ -174,6 +199,8 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 func (c *Connection) run() {
 messageLoop:
 	for {
+		// TODO: Send periodic Echo-Requests to keep the TCP stream
+		// alive?
 		msg, err := c.readNextMessage()
 		if err != nil {
 			// TODO: log?
@@ -191,10 +218,10 @@ messageLoop:
 			break messageLoop
 		}
 	}
-	c.conn.Close()
 	if c.ppp != nil {
-		c.ppp.Close()
+		c.ppp.Terminate(fmt.Errorf("PPTP control connection closed by client"))
 	}
+	c.Close()
 }
 
 func newConnection(s *Server, conn net.Conn, callID uint16) *Connection {
