@@ -12,6 +12,16 @@ import (
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/pipe"
+)
+
+const (
+	// numBufferedPackets is the number of packets that we will
+	// buffer per receive pipe before writes start to fail. This
+	// is deliberately set fairly small because readers ought
+	// to be fast enough that the buffers never become full and
+	// we don't want buffer bloat.
+	numBufferedPackets = 4
 )
 
 type Network struct {
@@ -23,17 +33,15 @@ type Network struct {
 }
 
 type Tap struct {
-	net   *Network
-	pipeR *io.PipeReader
-	pipeW *io.PipeWriter
-	id    int
+	net    *Network
+	rxpipe io.ReadWriteCloser
+	id     int
 }
 
 type node struct {
-	net   *Network
-	addr  ipx.Addr
-	pipeR *io.PipeReader
-	pipeW *io.PipeWriter
+	net    *Network
+	addr   ipx.Addr
+	rxpipe io.ReadWriteCloser
 }
 
 var (
@@ -64,7 +72,7 @@ var (
 // Close removes the node from its parent network; future calls to Read() will
 // return EOF and packets sent to its address will not be delivered.
 func (n *node) Close() error {
-	n.pipeW.Close()
+	n.rxpipe.Close()
 	n.net.mu.Lock()
 	delete(n.net.nodesByIPX, n.addr)
 	n.net.mu.Unlock()
@@ -73,7 +81,7 @@ func (n *node) Close() error {
 
 // Read reads a packet from the network for this node.
 func (n *node) Read(data []byte) (int, error) {
-	return n.pipeR.Read(data)
+	return n.rxpipe.Read(data)
 }
 
 // Write writes a packet into the network from the given node.
@@ -89,7 +97,7 @@ func (n *node) Address() ipx.Addr {
 // Close removes the tap from the network; no more packets will be delivered
 // to it and all future calls to Read() will return EOF.
 func (t *Tap) Close() error {
-	t.pipeW.Close()
+	t.rxpipe.Close()
 	t.net.mu.Lock()
 	delete(t.net.taps, t.id)
 	t.net.mu.Unlock()
@@ -98,7 +106,7 @@ func (t *Tap) Close() error {
 
 // Read reads a packet from the network tap.
 func (t *Tap) Read(data []byte) (int, error) {
-	return t.pipeR.Read(data)
+	return t.rxpipe.Read(data)
 }
 
 // Write writes a packet into the network.
@@ -129,11 +137,9 @@ func (n *Network) addNode(node *node) {
 
 // NewNode creates a new node on the network.
 func (n *Network) NewNode() network.Node {
-	r, w := io.Pipe()
 	node := &node{
-		net:   n,
-		pipeR: r,
-		pipeW: w,
+		net:    n,
+		rxpipe: pipe.New(numBufferedPackets),
 	}
 	n.addNode(node)
 	return node
@@ -156,7 +162,7 @@ func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte, src 
 		// Packet is written into the delivery pipe for the node; the
 		// owner of the node will receive it by calling Read() on the
 		// node which reads from the other end of the pipe.
-		_, err := node.pipeW.Write(packet)
+		_, err := node.rxpipe.Write(packet)
 		if err != nil {
 			errs = append(errs, err.Error())
 		}
@@ -180,7 +186,7 @@ func (n *Network) forwardToTaps(packet []byte, src io.Writer) {
 	}
 	n.mu.RUnlock()
 	for _, tap := range taps {
-		tap.pipeW.Write(packet)
+		tap.rxpipe.Write(packet)
 	}
 }
 
@@ -204,7 +210,7 @@ func (n *Network) forwardPacket(header *ipx.Header, packet []byte, src io.Writer
 	if !ok {
 		return UnknownNodeError
 	}
-	_, err := node.pipeW.Write(packet)
+	_, err := node.rxpipe.Write(packet)
 	return err
 }
 
@@ -225,13 +231,11 @@ func (n *Network) writeFromSource(packet []byte, src io.Writer) (int, error) {
 // The caller must call Read() on the tap regularly otherwise it may stall the
 // operation of the network.
 func (n *Network) Tap() *Tap {
-	r, w := io.Pipe()
 	n.mu.Lock()
 	tap := &Tap{
-		id:    n.nextTapID,
-		net:   n,
-		pipeR: r,
-		pipeW: w,
+		id:     n.nextTapID,
+		net:    n,
+		rxpipe: pipe.New(numBufferedPackets),
 	}
 	n.nextTapID++
 	n.taps[tap.id] = tap
