@@ -21,8 +21,6 @@ var (
 )
 
 type pipe struct {
-	ipx.ReaderShim
-	ipx.WriterShim
 	ch     chan *ipx.Packet
 	closed bool
 	mu     sync.Mutex
@@ -82,7 +80,5 @@ func New(size int) *pipe {
 	p := &pipe{
 		ch: make(chan *ipx.Packet, size),
 	}
-	p.ReaderShim.Reader = p
-	p.WriterShim.Writer = p
 	return p
 }
