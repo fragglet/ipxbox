@@ -16,6 +16,7 @@ type Network interface {
 // Node represents a node attached to an IPX network.
 type Node interface {
 	io.ReadWriteCloser
+	ipx.ReadWriteCloser
 
 	// Address returns the IPX address of the node.
 	Address() ipx.Addr

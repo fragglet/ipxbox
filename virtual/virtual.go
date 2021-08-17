@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 
@@ -33,21 +32,25 @@ type Network struct {
 }
 
 type Tap struct {
+	ipx.ReaderShim
+	ipx.WriterShim
 	net    *Network
-	rxpipe io.ReadWriteCloser
+	rxpipe ipx.ReadWriteCloser
 	id     int
 }
 
 type node struct {
+	ipx.ReaderShim
+	ipx.WriterShim
 	net    *Network
 	addr   ipx.Addr
-	rxpipe io.ReadWriteCloser
+	rxpipe ipx.ReadWriteCloser
 }
 
 var (
 	_ = (network.Network)(&Network{})
 	_ = (network.Node)(&node{})
-	_ = (io.ReadWriteCloser)(&Tap{})
+	_ = (ipx.ReadWriteCloser)(&Tap{})
 
 	// Well-known IPX ports used for NetBIOS/SMB.
 	netbiosPorts = map[uint16]bool{
@@ -60,8 +63,8 @@ var (
 		0x9010: true, // SNMP over IPX, RFC 1298
 	}
 
-	// UnknownNodeError is returned by Network.Write() if the destination
-	// MAC address is not associated with any known node.
+	// UnknownNodeError is returned by Network.WritePacket() if the
+	// destination MAC address is not associated with any known node.
 	UnknownNodeError = errors.New("unknown destination address")
 
 	// FilteredPacketError is returned when the virtual network is
@@ -69,8 +72,8 @@ var (
 	FilteredPacketError = errors.New("packet filtered")
 )
 
-// Close removes the node from its parent network; future calls to Read() will
-// return EOF and packets sent to its address will not be delivered.
+// Close removes the node from its parent network; future calls to ReadPacket()
+// will return EOF and packets sent to its address will not be delivered.
 func (n *node) Close() error {
 	n.rxpipe.Close()
 	n.net.mu.Lock()
@@ -79,14 +82,14 @@ func (n *node) Close() error {
 	return nil
 }
 
-// Read reads a packet from the network for this node.
-func (n *node) Read(data []byte) (int, error) {
-	return n.rxpipe.Read(data)
+// ReadPacket reads a packet from the network for this node.
+func (n *node) ReadPacket() (*ipx.Packet, error) {
+	return n.rxpipe.ReadPacket()
 }
 
-// Write writes a packet into the network from the given node.
-func (n *node) Write(packet []byte) (int, error) {
-	return n.net.writeFromSource(packet, n)
+// WritePacket writes a packet into the network from the given node.
+func (n *node) WritePacket(packet *ipx.Packet) error {
+	return n.net.forwardPacket(packet, n)
 }
 
 // Address returns the address of the given node.
@@ -95,7 +98,7 @@ func (n *node) Address() ipx.Addr {
 }
 
 // Close removes the tap from the network; no more packets will be delivered
-// to it and all future calls to Read() will return EOF.
+// to it and all future calls to ReadPacket() will return EOF.
 func (t *Tap) Close() error {
 	t.rxpipe.Close()
 	t.net.mu.Lock()
@@ -104,14 +107,14 @@ func (t *Tap) Close() error {
 	return nil
 }
 
-// Read reads a packet from the network tap.
-func (t *Tap) Read(data []byte) (int, error) {
-	return t.rxpipe.Read(data)
+// ReadPacket reads a packet from the network tap.
+func (t *Tap) ReadPacket() (*ipx.Packet, error) {
+	return t.rxpipe.ReadPacket()
 }
 
-// Write writes a packet into the network.
-func (t *Tap) Write(packet []byte) (int, error) {
-	return t.net.writeFromSource(packet, t)
+// WritePacket writes a packet into the network.
+func (t *Tap) WritePacket(packet *ipx.Packet) error {
+	return t.net.forwardPacket(packet, t)
 }
 
 // addNode adds a new node to the network, setting its address to an unused
@@ -141,6 +144,8 @@ func (n *Network) NewNode() network.Node {
 		net:    n,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
+	node.ReaderShim.Reader = node
+	node.WriterShim.Writer = node
 	n.addNode(node)
 	return node
 }
@@ -148,7 +153,7 @@ func (n *Network) NewNode() network.Node {
 // forwardBroadcastPacket takes a broadcast packet received from a node and
 // forwards it to all other clients; however, it is never sent back to the
 // source node from which it came.
-func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte, src io.Writer) error {
+func (n *Network) forwardBroadcastPacket(packet *ipx.Packet, src ipx.Writer) error {
 	errs := []string{}
 	nodes := []*node{}
 	n.mu.RLock()
@@ -162,8 +167,7 @@ func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte, src 
 		// Packet is written into the delivery pipe for the node; the
 		// owner of the node will receive it by calling Read() on the
 		// node which reads from the other end of the pipe.
-		_, err := node.rxpipe.Write(packet)
-		if err != nil {
+		if err := node.rxpipe.WritePacket(packet); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -176,7 +180,7 @@ func (n *Network) forwardBroadcastPacket(header *ipx.Header, packet []byte, src 
 // forwardToTaps sends the given packet to all taps which are currently
 // listening to network traffic. We don't forward packets back to the source
 // that sent them, though.
-func (n *Network) forwardToTaps(packet []byte, src io.Writer) {
+func (n *Network) forwardToTaps(packet *ipx.Packet, src ipx.Writer) {
 	taps := []*Tap{}
 	n.mu.RLock()
 	for _, tap := range n.taps {
@@ -186,50 +190,36 @@ func (n *Network) forwardToTaps(packet []byte, src io.Writer) {
 	}
 	n.mu.RUnlock()
 	for _, tap := range taps {
-		tap.rxpipe.Write(packet)
+		tap.rxpipe.WritePacket(packet)
 	}
 }
 
 // forwardPacket receives a packet and forwards it on to another node.
-func (n *Network) forwardPacket(header *ipx.Header, packet []byte, src io.Writer) error {
-	if n.BlockNetBIOS && (netbiosPorts[header.Dest.Socket] ||
-		netbiosPorts[header.Src.Socket]) {
+func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
+	if n.BlockNetBIOS && (netbiosPorts[packet.Header.Dest.Socket] ||
+		netbiosPorts[packet.Header.Src.Socket]) {
 		return FilteredPacketError
 	}
 
 	n.forwardToTaps(packet, src)
-	if header.IsBroadcast() {
-		return n.forwardBroadcastPacket(header, packet, src)
+	if packet.Header.IsBroadcast() {
+		return n.forwardBroadcastPacket(packet, src)
 	}
 
 	// We can only forward it on if the destination IPX address corresponds
 	// to a node that we know about:
 	n.mu.RLock()
-	node, ok := n.nodesByIPX[header.Dest.Addr]
+	node, ok := n.nodesByIPX[packet.Header.Dest.Addr]
 	n.mu.RUnlock()
 	if !ok {
 		return UnknownNodeError
 	}
-	_, err := node.rxpipe.Write(packet)
-	return err
-}
-
-// writeFromSource writes a packet to the network, forwarding to the right
-// node as appropriate.
-func (n *Network) writeFromSource(packet []byte, src io.Writer) (int, error) {
-	var header ipx.Header
-	if err := header.UnmarshalBinary(packet); err != nil {
-		return 0, err
-	}
-	if err := n.forwardPacket(&header, packet, src); err != nil {
-		return 0, err
-	}
-	return len(packet), nil
+	return node.rxpipe.WritePacket(packet)
 }
 
 // Tap creates a new network tap for listening to network traffic.
-// The caller must call Read() on the tap regularly otherwise it may stall the
-// operation of the network.
+// The caller must call ReadPacket() on the tap regularly otherwise not all
+// tapped packets may be captured.
 func (n *Network) Tap() *Tap {
 	n.mu.Lock()
 	tap := &Tap{
@@ -237,6 +227,8 @@ func (n *Network) Tap() *Tap {
 		net:    n,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
+	tap.ReaderShim.Reader = tap
+	tap.WriterShim.Writer = tap
 	n.nextTapID++
 	n.taps[tap.id] = tap
 	n.mu.Unlock()
