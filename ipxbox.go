@@ -45,14 +45,18 @@ func printPackets(v *virtual.Network) {
 	tap := v.Tap()
 	defer tap.Close()
 	for {
-		buf := make([]byte, 1500)
-		n, err := tap.Read(buf)
+		packet, err := tap.ReadPacket()
 		if err != nil {
 			break
 		}
+		packetBytes, err := packet.MarshalBinary()
+		if err != nil {
+			fmt.Printf("error marshaling packet: %v", err)
+			return
+		}
 		fmt.Printf("packet:\n")
-		for i := 0; i < n; i++ {
-			fmt.Printf("%02x ", buf[i])
+		for i, b := range packetBytes {
+			fmt.Printf("%02x ", b)
 			if (i+1)%16 == 0 {
 				fmt.Printf("\n")
 			}
