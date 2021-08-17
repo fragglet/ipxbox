@@ -29,6 +29,8 @@ type DuplexEthernetStream interface {
 // Phys implements the Reader and Writer interfaces to allow IPX packets to
 // be read from and written to a physical network interface.
 type Phys struct {
+	ipx.ReaderShim
+	ipx.WriterShim
 	stream DuplexEthernetStream
 	ps     *gopacket.PacketSource
 	framer Framer
@@ -46,22 +48,21 @@ func (p *Phys) Close() error {
 	return nil
 }
 
-// Read implements the io.Reader interface, and will block until an IPX packet
-// is read from the physical interface.
-func (p *Phys) Read(result []byte) (int, error) {
+// ReadPacket implements the ipx.Reader interface, and will block until an
+// IPX packet is read from the physical interface.
+func (p *Phys) ReadPacket() (*ipx.Packet, error) {
 	for {
 		pkt, err := p.ps.NextPacket()
 		if err != nil {
-			return 0, nil
+			return nil, err
 		}
 		payload, ok := GetIPXPayload(pkt)
 		if ok {
-			cnt := len(payload)
-			if len(result) < cnt {
-				cnt = len(result)
+			result := &ipx.Packet{}
+			if err := result.UnmarshalBinary(payload); err != nil {
+				continue
 			}
-			copy(result[:cnt], payload[:cnt])
-			return cnt, nil
+			return result, nil
 		} else {
 			p.mu.Lock()
 			if p.nonIPX != nil {
@@ -72,25 +73,21 @@ func (p *Phys) Read(result []byte) (int, error) {
 	}
 }
 
-// Write implements the io.Writer interface, and will write the given IPX
-// packet to the physical interface.
-func (p *Phys) Write(packet []byte) (int, error) {
-	var hdr ipx.Header
-	if err := hdr.UnmarshalBinary(packet); err != nil {
-		return 0, err
-	}
-	dest := net.HardwareAddr(hdr.Dest.Addr[:])
+// WritePacket implements the ipx.Writer interface, and will write the
+// given IPX packet to the physical interface.
+func (p *Phys) WritePacket(packet *ipx.Packet) error {
+	dest := net.HardwareAddr(packet.Header.Dest.Addr[:])
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	layers, err := p.framer.Frame(dest, packet)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	gopacket.SerializeLayers(buf, opts, layers...)
 	if err := p.stream.WritePacketData(buf.Bytes()); err != nil {
-		return 0, err
+		return err
 	}
-	return len(packet), nil
+	return nil
 }
 
 // NonIPX returns a DuplexEthernetStream from which all non-IPX Ethernet frames
@@ -180,11 +177,14 @@ func (ni *nonIPX) Close() {
 }
 
 func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
-	return &Phys{
+	p := &Phys{
 		stream: stream,
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
 		framer: framer,
 	}
+	p.ReaderShim.Reader = p
+	p.WriterShim.Writer = p
+	return p
 }
 
 // copyLoop reads packets from a and writes them to b.

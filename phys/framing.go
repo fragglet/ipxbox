@@ -9,7 +9,7 @@ import (
 )
 
 type Framer interface {
-	Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.SerializableLayer, error)
+	Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error)
 }
 
 const (
@@ -93,57 +93,57 @@ func GetIPXPayload(pkt gopacket.Packet) ([]byte, bool) {
 
 type framer802_2 struct{}
 
-func (framer802_2) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.SerializableLayer, error) {
-	hdr := &ipx.Header{}
-	if err := hdr.UnmarshalBinary(packet); err != nil {
+func (framer802_2) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
+	payload, err := packet.MarshalBinary()
+	if err != nil {
 		return nil, err
 	}
 	return []gopacket.SerializableLayer{
 		&layers.Ethernet{
-			SrcMAC:       net.HardwareAddr(hdr.Src.Addr[:]),
+			SrcMAC:       net.HardwareAddr(packet.Header.Src.Addr[:]),
 			DstMAC:       dest,
 			EthernetType: layers.EthernetTypeLLC,
-			Length:       uint16(len(packet) + 3),
+			Length:       uint16(len(payload) + 3),
 		},
 		&layers.LLC{
 			DSAP:    lsapNovell,
 			SSAP:    lsapNovell,
 			Control: 3,
 		},
-		gopacket.Payload(packet),
+		gopacket.Payload(payload),
 	}, nil
 }
 
 type framer802_3Raw struct{}
 
-func (framer802_3Raw) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.SerializableLayer, error) {
-	hdr := &ipx.Header{}
-	if err := hdr.UnmarshalBinary(packet); err != nil {
+func (framer802_3Raw) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
+	payload, err := packet.MarshalBinary()
+	if err != nil {
 		return nil, err
 	}
 	return []gopacket.SerializableLayer{
 		&layers.Ethernet{
-			SrcMAC: net.HardwareAddr(hdr.Src.Addr[:]),
+			SrcMAC: net.HardwareAddr(packet.Header.Src.Addr[:]),
 			DstMAC: dest,
-			Length: uint16(len(packet)),
+			Length: uint16(len(payload)),
 		},
-		gopacket.Payload(packet),
+		gopacket.Payload(payload),
 	}, nil
 }
 
 type framerSNAP struct{}
 
-func (framerSNAP) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.SerializableLayer, error) {
-	hdr := &ipx.Header{}
-	if err := hdr.UnmarshalBinary(packet); err != nil {
+func (framerSNAP) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
+	payload, err := packet.MarshalBinary()
+	if err != nil {
 		return nil, err
 	}
 	return []gopacket.SerializableLayer{
 		&layers.Ethernet{
-			SrcMAC:       net.HardwareAddr(hdr.Src.Addr[:]),
+			SrcMAC:       net.HardwareAddr(packet.Header.Src.Addr[:]),
 			DstMAC:       dest,
 			EthernetType: layers.EthernetTypeLLC,
-			Length:       uint16(len(packet) + 8),
+			Length:       uint16(len(payload) + 8),
 		},
 		&layers.LLC{
 			DSAP:    lsapSNAP,
@@ -154,23 +154,23 @@ func (framerSNAP) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.Serial
 			Type:               etherTypeIPX,
 			OrganizationalCode: []byte{0, 0, 0},
 		},
-		gopacket.Payload(packet),
+		gopacket.Payload(payload),
 	}, nil
 }
 
 type framerEthernetII struct{}
 
-func (framerEthernetII) Frame(dest net.HardwareAddr, packet []byte) ([]gopacket.SerializableLayer, error) {
-	hdr := &ipx.Header{}
-	if err := hdr.UnmarshalBinary(packet); err != nil {
+func (framerEthernetII) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
+	payload, err := packet.MarshalBinary()
+	if err != nil {
 		return nil, err
 	}
 	return []gopacket.SerializableLayer{
 		&layers.Ethernet{
-			SrcMAC:       net.HardwareAddr(hdr.Src.Addr[:]),
+			SrcMAC:       net.HardwareAddr(packet.Header.Src.Addr[:]),
 			DstMAC:       dest,
 			EthernetType: etherTypeIPX,
 		},
-		gopacket.Payload(packet),
+		gopacket.Payload(payload),
 	}, nil
 }
