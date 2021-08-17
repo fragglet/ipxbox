@@ -12,6 +12,8 @@ import (
 	"errors"
 	"io"
 	"sync"
+
+	"github.com/fragglet/ipxbox/ipx"
 )
 
 var (
@@ -19,7 +21,9 @@ var (
 )
 
 type pipe struct {
-	ch     chan []byte
+	ipx.ReaderShim
+	ipx.WriterShim
+	ch     chan *ipx.Packet
 	closed bool
 	mu     sync.Mutex
 }
@@ -34,53 +38,51 @@ func (p *pipe) Close() error {
 	return nil
 }
 
-// Write sends a byte slice to the channel. This function never blocks. If
+// Write sends a packet to the channel. This function never blocks. If
 // the pipe can hold no more data (eg. the reader has stopped reading) then
 // PipeFullError may be returned. This function will return len(data) even
 // if the reader was not able to read all those bytes.
-func (p *pipe) Write(data []byte) (n int, err error) {
+func (p *pipe) WritePacket(pkt *ipx.Packet) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	// Sending to a closed channel will result in a runtime panic.
 	// Instead, if the pipe has been closed, return an error.
 	if p.closed {
-		return 0, io.ErrClosedPipe
+		return io.ErrClosedPipe
 	}
-	// "Implementations [of io.Reader] must not retain p."
-	data = append([]byte{}, data...)
 	select {
-	case p.ch <- data:
-		return len(data), nil
+	case p.ch <- pkt:
+		return nil
 	default:
-		return 0, PipeFullError
+		return PipeFullError
 	}
 }
 
-// Read blocks until data can be read into the provided buffer or until the
-// pipe is closed.
-func (p *pipe) Read(data []byte) (n int, err error) {
+// ReadPacket blocks until data can be read into the provided buffer or until
+// the pipe is closed.
+func (p *pipe) ReadPacket() (*ipx.Packet, error) {
 	p.mu.Lock()
 	closed := p.closed
 	p.mu.Unlock()
 	if closed {
-		return 0, io.ErrClosedPipe
+		return nil, io.ErrClosedPipe
 	}
-	item, ok := <-p.ch
+	pkt, ok := <-p.ch
 	if !ok {
-		return 0, io.ErrClosedPipe
+		return nil, io.ErrClosedPipe
 	}
-	cnt := len(item)
-	if cnt > len(data) {
-		cnt = len(data)
-	}
-	copy(data[:cnt], item[:cnt])
-	return cnt, nil
+	return pkt, nil
 }
 
 // New returns a new pipe that buffers `size` number of writes internally.
 // This is conceptually similar to io.Pipe(), except for the differences
 // listed in the package description, and the fact that we return only a
 // single thing that implements both Reader and Writer.
-func New(size int) io.ReadWriteCloser {
-	return &pipe{ch: make(chan []byte, size)}
+func New(size int) *pipe {
+	p := &pipe{
+		ch: make(chan *ipx.Packet, size),
+	}
+	p.ReaderShim.Reader = p
+	p.WriterShim.Writer = p
+	return p
 }
