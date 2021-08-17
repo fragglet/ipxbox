@@ -165,8 +165,8 @@ func (n *Network) forwardBroadcastPacket(packet *ipx.Packet, src ipx.Writer) err
 	n.mu.RUnlock()
 	for _, node := range nodes {
 		// Packet is written into the delivery pipe for the node; the
-		// owner of the node will receive it by calling Read() on the
-		// node which reads from the other end of the pipe.
+		// owner of the node will receive it by calling ReadPacket()
+		// from the other end of the pipe.
 		if err := node.rxpipe.WritePacket(packet); err != nil {
 			errs = append(errs, err.Error())
 		}

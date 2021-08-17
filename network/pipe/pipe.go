@@ -1,11 +1,11 @@
 // Package pipe implements a nonblocking Reader/Writer pair; data can be
 // written to the writer end of the pipe and read from the reader end of
-// the pipe, and the io.ReadCloser/io.WriteCloser interfaces are
-// implemented. This is similar to io.Pipe() with two differences:
-// firstly, calls to Write() never block. Secondly, there is an internal
-// buffer of byte slices that have been written but not yet read from
-// the pipe. The size of the buffer is configurable. Once the buffer is
-// full, Write() will start to return errors.
+// the pipe. This is similar to io.Pipe() with some differences: first,
+// we implement the ipx.ReadWriteCloser interface. Second, calls to
+// WritePacket() never block. Third, there is an internal buffer of packets
+// that have been written but not yet read from the pipe. The size of the
+// buffer is configurable. Once the buffer is full, WritePacket() will
+// return errors until the reader drains the pipe.
 package pipe
 
 import (
@@ -38,7 +38,7 @@ func (p *pipe) Close() error {
 	return nil
 }
 
-// Write sends a packet to the channel. This function never blocks. If
+// WritePacket sends a packet to the channel. This function never blocks. If
 // the pipe can hold no more data (eg. the reader has stopped reading) then
 // PipeFullError may be returned. This function will return len(data) even
 // if the reader was not able to read all those bytes.
