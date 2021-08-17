@@ -101,19 +101,25 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 // to the connected UDP client. The function will only return when the client's
 // network node is Close()d.
 func (s *Server) runClient(c *client) {
-	var buf [1500]byte
 	for {
-		packetLen, err := c.node.Read(buf[:])
+		packet, err := c.node.ReadPacket()
 		switch {
 		case err == nil:
-			s.socket.WriteToUDP(buf[0:packetLen], c.addr)
-			c.stats.txPackets++
-			c.stats.txBytes += uint64(packetLen)
+			// Proceed with transmit below.
 		case err == io.EOF:
 			return
 		default:
 			// Other errors are ignored.
+			continue
 		}
+		packetBytes, err := packet.MarshalBinary()
+		if err != nil {
+			s.log("failed to marshal packet: %v", err)
+			continue
+		}
+		s.socket.WriteToUDP(packetBytes, c.addr)
+		c.stats.txPackets++
+		c.stats.txBytes += uint64(len(packetBytes))
 	}
 }
 
@@ -171,14 +177,14 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 
 // processPacket decodes and processes a received UDP packet, sending responses
 // and forwarding the packet on to other clients as appropriate.
-func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
-	var header ipx.Header
-	if err := header.UnmarshalBinary(packet); err != nil {
+func (s *Server) processPacket(packetBytes []byte, addr *net.UDPAddr) {
+	packet := &ipx.Packet{}
+	if err := packet.UnmarshalBinary(packetBytes); err != nil {
 		return
 	}
 
-	if header.IsRegistrationPacket() {
-		s.newClient(&header, addr)
+	if packet.Header.IsRegistrationPacket() {
+		s.newClient(&packet.Header, addr)
 		return
 	}
 
@@ -188,17 +194,17 @@ func (s *Server) processPacket(packet []byte, addr *net.UDPAddr) {
 	if !ok {
 		return
 	}
-	if header.Src.Addr != srcClient.node.Address() {
+	if packet.Header.Src.Addr != srcClient.node.Address() {
 		return
 	}
 
 	// Update statistics.
 	srcClient.stats.rxPackets++
-	srcClient.stats.rxBytes += uint64(len(packet))
+	srcClient.stats.rxBytes += uint64(len(packetBytes))
 
 	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
-	srcClient.node.Write(packet)
+	srcClient.node.WritePacket(packet)
 }
 
 // sendPing transmits a ping packet to the given client. The DOSbox IPX client
