@@ -38,8 +38,6 @@ type Tap struct {
 }
 
 type node struct {
-	ipx.ReaderShim
-	ipx.WriterShim
 	net    *Network
 	addr   ipx.Addr
 	rxpipe ipx.ReadWriteCloser
@@ -142,8 +140,6 @@ func (n *Network) NewNode() network.Node {
 		net:    n,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
-	node.ReaderShim.Reader = node
-	node.WriterShim.Writer = node
 	n.addNode(node)
 	return node
 }

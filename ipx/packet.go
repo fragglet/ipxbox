@@ -8,8 +8,6 @@ import (
 var (
 	_ = (encoding.BinaryMarshaler)(&Packet{})
 	_ = (encoding.BinaryUnmarshaler)(&Packet{})
-	_ = (io.Reader)(&ReaderShim{})
-	_ = (io.Writer)(&WriterShim{})
 )
 
 // Reader defines a common interface implemented by things from which
@@ -68,40 +66,3 @@ func (p *Packet) UnmarshalBinary(packet []byte) error {
 	return nil
 }
 
-// ReaderShim implemenets an io.Reader based on an ipx.Reader.
-type ReaderShim struct {
-	Reader
-}
-
-func (r *ReaderShim) Read(p []byte) (n int, err error) {
-	pkt, err := r.Reader.ReadPacket()
-	if err != nil {
-		return 0, err
-	}
-	pktBytes, err := pkt.MarshalBinary()
-	if err != nil {
-		return 0, err
-	}
-	cnt := len(pktBytes)
-	if cnt > len(p) {
-		cnt = len(p)
-	}
-	copy(p[:cnt], pktBytes[:cnt])
-	return cnt, nil
-}
-
-// WriterShim implements an io.Writer based on an ipx.Writer.
-type WriterShim struct {
-	Writer
-}
-
-func (w *WriterShim) Write(p []byte) (n int, err error) {
-	packet := &Packet{}
-	if err := packet.UnmarshalBinary(p); err != nil {
-		return 0, err
-	}
-	if err := w.Writer.WritePacket(packet); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-}

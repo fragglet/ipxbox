@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	_ = (io.ReadWriteCloser)(&Phys{})
+	_ = (ipx.ReadWriteCloser)(&Phys{})
 )
 
 // DuplexEthernetStream extends gopacket.PacketDataSource to an interface
@@ -29,8 +29,6 @@ type DuplexEthernetStream interface {
 // Phys implements the Reader and Writer interfaces to allow IPX packets to
 // be read from and written to a physical network interface.
 type Phys struct {
-	ipx.ReaderShim
-	ipx.WriterShim
 	stream DuplexEthernetStream
 	ps     *gopacket.PacketSource
 	framer Framer
@@ -177,14 +175,11 @@ func (ni *nonIPX) Close() {
 }
 
 func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
-	p := &Phys{
+	return &Phys{
 		stream: stream,
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
 		framer: framer,
 	}
-	p.ReaderShim.Reader = p
-	p.WriterShim.Writer = p
-	return p
 }
 
 // copyLoop reads packets from a and writes them to b.
