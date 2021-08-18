@@ -28,6 +28,16 @@ type Writer interface {
 	WritePacket(*Packet) error
 }
 
+type ReadCloser interface {
+	Reader
+	io.Closer
+}
+
+type WriteCloser interface {
+	Writer
+	io.Closer
+}
+
 type ReadWriteCloser interface {
 	Reader
 	Writer

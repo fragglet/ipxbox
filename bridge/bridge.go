@@ -2,33 +2,26 @@
 package bridge
 
 import (
-	"io"
 	"sync"
 
 	"github.com/fragglet/ipxbox/ipx"
 )
 
-func copyPackets(in io.ReadCloser, out io.WriteCloser) {
+func copyPackets(in ipx.ReadCloser, out ipx.WriteCloser) {
 	localAddresses := map[ipx.Addr]bool{}
 	for {
-		buf := make([]byte, 1500)
-		n, err := in.Read(buf)
+		packet, err := in.ReadPacket()
 		if err != nil {
 			break
 		}
-		buf = buf[0:n]
 
-		var hdr ipx.Header
-		if err := hdr.UnmarshalBinary(buf); err != nil {
-			continue
-		}
 		// Remember every address we see from the input device, and
 		// don't copy packets if the destination is on the input device.
-		localAddresses[hdr.Src.Addr] = true
-		if localAddresses[hdr.Dest.Addr] {
+		localAddresses[packet.Header.Src.Addr] = true
+		if localAddresses[packet.Header.Dest.Addr] {
 			continue
 		}
-		out.Write(buf)
+		out.WritePacket(packet)
 	}
 	in.Close()
 	out.Close()
@@ -37,7 +30,7 @@ func copyPackets(in io.ReadCloser, out io.WriteCloser) {
 // Run implements an IPX bridge, copying IPX packets from in1 to out2 and from
 // in2 to out1. Copying will stop if an error occurs (eg. if one of the inputs
 // is closed) and all the devices will be closed.
-func Run(in1 io.ReadCloser, out1 io.WriteCloser, in2 io.ReadCloser, out2 io.WriteCloser) {
+func Run(in1 ipx.ReadCloser, out1 ipx.WriteCloser, in2 ipx.ReadCloser, out2 ipx.WriteCloser) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
