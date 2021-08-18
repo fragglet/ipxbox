@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/ppp/lcp"
 
@@ -88,9 +89,8 @@ func (s *Session) Terminated() bool {
 // sendPackets continually reads packets from upstream and forwards them over
 // the PPP channel.
 func (s *Session) sendPackets() {
-	var buf [1500]byte
 	for !s.Terminated() {
-		n, err := s.node.Read(buf[:])
+		packet, err := s.node.ReadPacket()
 		if err != nil {
 			break
 		}
@@ -101,7 +101,7 @@ func (s *Session) sendPackets() {
 			// Not yet in network state
 			continue
 		}
-		if err := s.sendPPP(buf[:n], PPPTypeIPX); err != nil {
+		if err := s.sendPPP(packet.Payload, PPPTypeIPX); err != nil {
 			break
 		}
 	}
@@ -166,7 +166,12 @@ func (s *Session) recvAndProcess() error {
 	}
 
 	if ppp.PPPType == PPPTypeIPX {
-		s.node.Write(ppp.LayerPayload())
+		packet := &ipx.Packet{}
+		if err := packet.UnmarshalBinary(ppp.LayerPayload()); err != nil {
+			// TODO: Bad packet - log error?
+			return nil
+		}
+		s.node.WritePacket(packet)
 		// Don't return error; it may have just been a filtered
 		// packet.
 		return nil
