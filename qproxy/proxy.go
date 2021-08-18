@@ -105,23 +105,21 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 			continue
 		}
 		c.lastRXTime = time.Now()
-		hdr := &ipx.Header{
-			Length: uint16(n + ipx.HeaderLength + quakeHeaderBytes),
-			Dest:   *ipxAddr,
-			Src: ipx.HeaderAddr{
-				Addr:   p.node.Address(),
-				Socket: socket,
-			},
-		}
-		pktBytes, err := hdr.MarshalBinary()
-		if err != nil {
-			log.Printf("error marshalling IPX packet: %v", err)
-			continue
-		}
 		zeroBytes := [quakeHeaderBytes]byte{}
-		pktBytes = append(pktBytes, zeroBytes[:]...)
+		pktBytes := append([]byte{}, zeroBytes[:]...)
 		pktBytes = append(pktBytes, buf[:n]...)
-		if _, err := p.node.Write(pktBytes); err != nil {
+		packet := ipx.Packet{
+			Header: ipx.Header{
+				Length: uint16(n + ipx.HeaderLength + quakeHeaderBytes),
+				Dest:   *ipxAddr,
+				Src: ipx.HeaderAddr{
+					Addr:   p.node.Address(),
+					Socket: socket,
+				},
+			},
+			Payload: pktBytes,
+		}
+		if err := p.node.WritePacket(&packet); err != nil {
 			// TODO: close connection?
 			return
 		}
@@ -172,7 +170,7 @@ func (p *Proxy) resolveAddress() bool {
 	return true
 }
 
-func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
+func (p *Proxy) processPacket(packet *ipx.Packet) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	// First connection triggers the server address to be resolved. After
@@ -182,26 +180,26 @@ func (p *Proxy) processPacket(hdr *ipx.Header, pkt []byte) {
 	if len(p.conns) == 0 && !p.resolveAddress() {
 		return
 	}
-	c, ok := p.conns[hdr.Src]
+	c, ok := p.conns[packet.Header.Src]
 	if !ok {
 		var err error
-		c, err = p.newConnection(&hdr.Src)
+		c, err = p.newConnection(&packet.Header.Src)
 		if err != nil {
 			log.Printf("failed to create new connection to %v: %v", p.address, err)
 			return
 		}
 	}
 	c.lastRXTime = time.Now()
-	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], &p.address); err != nil {
+	if _, err := c.conn.WriteToUDP(packet.Payload[quakeHeaderBytes:], &p.address); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
-		p.closeConnection(&hdr.Src)
+		p.closeConnection(&packet.Header.Src)
 	}
 }
 
-func (p *Proxy) processConnectedPacket(hdr *ipx.Header, pkt []byte) {
+func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	c, ok := p.conns[hdr.Src]
+	c, ok := p.conns[packet.Header.Src]
 	if !ok || c.connectedPort < 0 {
 		return
 	}
@@ -210,9 +208,9 @@ func (p *Proxy) processConnectedPacket(hdr *ipx.Header, pkt []byte) {
 		Port: c.connectedPort,
 	}
 	c.lastRXTime = time.Now()
-	if _, err := c.conn.WriteToUDP(pkt[ipx.HeaderLength+quakeHeaderBytes:], destAddress); err != nil {
+	if _, err := c.conn.WriteToUDP(packet.Payload[quakeHeaderBytes:], destAddress); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
-		p.closeConnection(&hdr.Src)
+		p.closeConnection(&packet.Header.Src)
 	}
 }
 
@@ -236,9 +234,8 @@ func (p *Proxy) garbageCollect() {
 
 func (p *Proxy) Run() {
 	go p.garbageCollect()
-	var buf [1500]byte
 	for {
-		n, err := p.node.Read(buf[:])
+		packet, err := p.node.ReadPacket()
 		switch {
 		case err == io.EOF:
 			return
@@ -247,14 +244,10 @@ func (p *Proxy) Run() {
 			continue
 		}
 
-		var header ipx.Header
-		if err := header.UnmarshalBinary(buf[:n]); err != nil {
-			continue
-		}
-		if header.Dest.Socket == quakeIPXSocket {
-			p.processPacket(&header, buf[:n])
-		} else if header.Dest.Socket == connectedIPXSocket {
-			p.processConnectedPacket(&header, buf[:n])
+		if packet.Header.Dest.Socket == quakeIPXSocket {
+			p.processPacket(packet)
+		} else if packet.Header.Dest.Socket == connectedIPXSocket {
+			p.processConnectedPacket(packet)
 		}
 	}
 }
