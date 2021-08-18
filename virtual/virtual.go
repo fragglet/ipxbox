@@ -32,8 +32,6 @@ type Network struct {
 }
 
 type Tap struct {
-	ipx.ReaderShim
-	ipx.WriterShim
 	net    *Network
 	rxpipe ipx.ReadWriteCloser
 	id     int
@@ -227,8 +225,6 @@ func (n *Network) Tap() *Tap {
 		net:    n,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
-	tap.ReaderShim.Reader = tap
-	tap.WriterShim.Writer = tap
 	n.nextTapID++
 	n.taps[tap.id] = tap
 	n.mu.Unlock()
