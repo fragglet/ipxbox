@@ -35,27 +35,22 @@ func (r *Router) Close() {
 	r.node.Close()
 }
 
-func (r *Router) unwrapFrame(packet []byte) ([]byte, error) {
-	var ipxHeader ipx.Header
-	if err := ipxHeader.UnmarshalBinary(packet); err != nil {
-		return nil, err
+func (r *Router) unwrapFrame(packet *ipx.Packet) ([]byte, error) {
+	if packet.Header.Dest.Socket != ipxSocket {
+		return nil, fmt.Errorf("not an ipxpkt fragment; destination socket %d != %d", packet.Header.Dest.Socket, ipxSocket)
 	}
-	if ipxHeader.Dest.Socket != ipxSocket {
-		return nil, fmt.Errorf("not an ipxpkt fragment; destination socket %d != %d", ipxHeader.Dest.Socket, ipxSocket)
-	}
-	packet = packet[ipx.HeaderLength:]
 
 	// TODO: Support ipxpkt version without trail bytes
-	if len(packet) < trailBytes+HeaderLength {
-		return nil, fmt.Errorf("inner packet too short: %d < %d", len(packet), trailBytes+HeaderLength)
+	if len(packet.Payload) < trailBytes+HeaderLength {
+		return nil, fmt.Errorf("inner packet too short: %d < %d", len(packet.Payload), trailBytes+HeaderLength)
 	}
-	packet = packet[trailBytes:]
+	payload := packet.Payload[trailBytes:]
 
 	var hdr Header
-	if err := hdr.UnmarshalBinary(packet); err != nil {
+	if err := hdr.UnmarshalBinary(payload); err != nil {
 		return nil, err
 	}
-	frame, complete := r.fr.reassemble(&ipxHeader, &hdr, packet[HeaderLength:])
+	frame, complete := r.fr.reassemble(&packet.Header, &hdr, payload[HeaderLength:])
 	if !complete {
 		return nil, fmt.Errorf("incomplete frame")
 	}
@@ -65,13 +60,12 @@ func (r *Router) unwrapFrame(packet []byte) ([]byte, error) {
 // readFrame reads an Ethernet frame from the router; it will block until
 // a complete frame arrives from another node.
 func (r *Router) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
-	var readBuf [1500]byte
 	for {
-		cnt, err := r.node.Read(readBuf[:])
+		packet, err := r.node.ReadPacket()
 		if err != nil {
 			return nil, gopacket.CaptureInfo{}, err
 		}
-		frame, err := r.unwrapFrame(readBuf[:cnt])
+		frame, err := r.unwrapFrame(packet)
 		if err != nil {
 			// TODO: Log error?
 			continue
@@ -115,14 +109,9 @@ func (r *Router) WritePacketData(frame []byte) error {
 
 	for fragIndex, frag := range fragments {
 		hdr1.Length = uint16(ipx.HeaderLength + HeaderLength + trailBytes + len(frag))
-		data, err := hdr1.MarshalBinary()
-		if err != nil {
-			return err
-		}
-
 		// TODO: Support non-trail version of ipxpkt
 		var trail [trailBytes]byte
-		data = append(data, trail[:]...)
+		data := append([]byte{}, trail[:]...)
 
 		hdr2.Fragment = uint8(fragIndex + 1)
 		data2, err := hdr2.MarshalBinary()
@@ -132,7 +121,11 @@ func (r *Router) WritePacketData(frame []byte) error {
 
 		data = append(data, data2...)
 		data = append(data, frag...)
-		if _, err := r.node.Write(data); err != nil {
+		packet := &ipx.Packet{
+			Header:  *hdr1,
+			Payload: data,
+		}
+		if err := r.node.WritePacket(packet); err != nil {
 			// Failure here is not necessarily an error; there may
 			// not be any appropriate destination for the packet.
 			// But don't bother sending the other fragments.
