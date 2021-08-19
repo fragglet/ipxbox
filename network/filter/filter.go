@@ -56,6 +56,10 @@ func (n *node) Close() error {
 	return n.inner.Close()
 }
 
+func (n *node) GetProperty(x interface{}) bool {
+	return n.inner.GetProperty(x)
+}
+
 func (n *node) Address() ipx.Addr {
 	return n.inner.Address()
 }

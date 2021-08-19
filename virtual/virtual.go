@@ -77,6 +77,16 @@ func (n *node) Address() ipx.Addr {
 	return n.addr
 }
 
+func (n *node) GetProperty(x interface{}) bool {
+	switch x.(type) {
+	case *ipx.Addr:
+		copy(x.(*ipx.Addr)[:], n.addr[:])
+		return true
+	default:
+		return false
+	}
+}
+
 // Close removes the tap from the network; no more packets will be delivered
 // to it and all future calls to ReadPacket() will return EOF.
 func (t *Tap) Close() error {
