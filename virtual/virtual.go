@@ -80,7 +80,7 @@ func (n *node) Address() ipx.Addr {
 func (n *node) GetProperty(x interface{}) bool {
 	switch x.(type) {
 	case *ipx.Addr:
-		copy(x.(*ipx.Addr)[:], n.addr[:])
+		*x.(*ipx.Addr) = n.addr
 		return true
 	default:
 		return false
