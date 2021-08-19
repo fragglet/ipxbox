@@ -28,7 +28,6 @@ type Network struct {
 	nodesByIPX   map[ipx.Addr]*node
 	nextTapID    int
 	taps         map[int]*Tap
-	BlockNetBIOS bool
 }
 
 type Tap struct {
@@ -48,24 +47,9 @@ var (
 	_ = (network.Node)(&node{})
 	_ = (ipx.ReadWriteCloser)(&Tap{})
 
-	// Well-known IPX ports used for NetBIOS/SMB.
-	netbiosPorts = map[uint16]bool{
-		0x451:  true, // NCP
-		0x452:  true, // SAP
-		0x453:  true, // RIP
-		0x455:  true, // NetBIOS
-		0x553:  true, // NWLink datagram, may contain SMB
-		0x900F: true, // SNMP over IPX, RFC 1298
-		0x9010: true, // SNMP over IPX, RFC 1298
-	}
-
 	// UnknownNodeError is returned by Network.WritePacket() if the
 	// destination MAC address is not associated with any known node.
 	UnknownNodeError = errors.New("unknown destination address")
-
-	// FilteredPacketError is returned when the virtual network is
-	// configured to filter packets of this type.
-	FilteredPacketError = errors.New("packet filtered")
 )
 
 // Close removes the node from its parent network; future calls to ReadPacket()
@@ -190,11 +174,6 @@ func (n *Network) forwardToTaps(packet *ipx.Packet, src ipx.Writer) {
 
 // forwardPacket receives a packet and forwards it on to another node.
 func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
-	if n.BlockNetBIOS && (netbiosPorts[packet.Header.Dest.Socket] ||
-		netbiosPorts[packet.Header.Src.Socket]) {
-		return FilteredPacketError
-	}
-
 	n.forwardToTaps(packet, src)
 	if packet.Header.IsBroadcast() {
 		return n.forwardBroadcastPacket(packet, src)

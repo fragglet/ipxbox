@@ -9,6 +9,8 @@ import (
 
 	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/ipxpkt"
+	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/filter"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
@@ -87,7 +89,7 @@ func ethernetStream() (phys.DuplexEthernetStream, error) {
 	return handle, nil
 }
 
-func addQuakeProxies(v *virtual.Network) {
+func addQuakeProxies(net network.Network) {
 	if *quakeServers == "" {
 		return
 	}
@@ -95,7 +97,7 @@ func addQuakeProxies(v *virtual.Network) {
 		p := qproxy.New(&qproxy.Config{
 			Address:     addr,
 			IdleTimeout: *clientTimeout,
-		}, v.NewNode())
+		}, net.NewNode())
 		go p.Run()
 	}
 }
@@ -106,8 +108,16 @@ func main() {
 	var cfg server.Config
 	cfg = *server.DefaultConfig
 	cfg.ClientTimeout = *clientTimeout
+
+	// We build the network up in layers, each layer adding an extra
+	// feature. This approach allows for modularity and separation of
+	// concerns, avoiding the complexity of a big monolithic system.
+	var net network.Network
 	v := virtual.New()
-	v.BlockNetBIOS = !*allowNetBIOS
+	net = v
+	if !*allowNetBIOS {
+		net = filter.New(net)
+	}
 
 	if *enableSyslog {
 		var err error
@@ -131,22 +141,22 @@ func main() {
 		tap := v.Tap()
 		go bridge.Run(tap, tap, p, p)
 		if *enableIpxpkt {
-			r := ipxpkt.NewRouter(v.NewNode())
+			r := ipxpkt.NewRouter(net.NewNode())
 			go phys.CopyFrames(r, p.NonIPX())
 		}
 	}
 	if *dumpPackets {
 		go printPackets(v)
 	}
-	addQuakeProxies(v)
+	addQuakeProxies(net)
 	if *enablePPTP {
-		pptps, err := pptp.NewServer(v)
+		pptps, err := pptp.NewServer(net)
 		if err != nil {
 			log.Fatal("failed to start PPTP server: %v", err)
 		}
 		go pptps.Run()
 	}
-	s, err := server.New(fmt.Sprintf(":%d", *port), v, &cfg)
+	s, err := server.New(fmt.Sprintf(":%d", *port), net, &cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
