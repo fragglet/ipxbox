@@ -34,7 +34,7 @@ type filteringNetwork struct {
 }
 
 func (n *filteringNetwork) NewNode() network.Node {
-	return &node{inner: inner.NewNode()}
+	return &node{inner: n.inner.NewNode()}
 }
 
 type node struct {
