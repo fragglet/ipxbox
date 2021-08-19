@@ -24,10 +24,10 @@ const (
 )
 
 type Network struct {
-	mu           sync.RWMutex
-	nodesByIPX   map[ipx.Addr]*node
-	nextTapID    int
-	taps         map[int]*Tap
+	mu         sync.RWMutex
+	nodesByIPX map[ipx.Addr]*node
+	nextTapID  int
+	taps       map[int]*Tap
 }
 
 type Tap struct {
