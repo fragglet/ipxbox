@@ -72,11 +72,6 @@ func (n *node) WritePacket(packet *ipx.Packet) error {
 	return n.net.forwardPacket(packet, n)
 }
 
-// Address returns the address of the given node.
-func (n *node) Address() ipx.Addr {
-	return n.addr
-}
-
 func (n *node) GetProperty(x interface{}) bool {
 	switch x.(type) {
 	case *ipx.Addr:

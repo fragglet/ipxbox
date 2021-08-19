@@ -60,10 +60,6 @@ func (n *node) GetProperty(x interface{}) bool {
 	return n.inner.GetProperty(x)
 }
 
-func (n *node) Address() ipx.Addr {
-	return n.inner.Address()
-}
-
 // New creates a network that wraps the given network but rejects packets
 // using certain well-known port numbers which could present a security risk.
 func New(n network.Network) network.Network {
