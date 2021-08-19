@@ -85,7 +85,7 @@ func (r *Router) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
 func (r *Router) WritePacketData(frame []byte) error {
 	hdr1 := &ipx.Header{
 		Src: ipx.HeaderAddr{
-			Addr:   r.node.Address(),
+			Addr:   network.NodeAddress(r.node),
 			Socket: ipxSocket,
 		},
 		Dest: ipx.HeaderAddr{

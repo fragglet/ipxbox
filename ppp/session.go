@@ -250,7 +250,7 @@ func (s *Session) negotiateIPX() error {
 	}
 	// TODO: Make address negotiable so that client can supply a
 	// desired address?
-	addr := s.node.Address()
+	addr := network.NodeAddress(s.node)
 	remoteOptions := map[lcp.OptionType]*option{
 		lcp.OptionIPXNode: &option{
 			value:    addr[:],

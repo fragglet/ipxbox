@@ -113,7 +113,7 @@ func (c *connection) receivePackets(p *Proxy, ipxAddr *ipx.HeaderAddr) {
 				Length: uint16(n + ipx.HeaderLength + quakeHeaderBytes),
 				Dest:   *ipxAddr,
 				Src: ipx.HeaderAddr{
-					Addr:   p.node.Address(),
+					Addr:   network.NodeAddress(p.node),
 					Socket: socket,
 				},
 			},

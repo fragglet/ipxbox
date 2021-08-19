@@ -147,7 +147,7 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 
 		s.clients[addrStr] = c
 		s.log("new connection from %s, assigned IPX address %s",
-			addrStr, c.node.Address())
+			addrStr, network.NodeAddress(c.node))
 		go s.runClient(c)
 	}
 
@@ -158,7 +158,7 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 		TransControl: 0,
 		Dest: ipx.HeaderAddr{
 			Network: [4]byte{0, 0, 0, 0},
-			Addr:    c.node.Address(),
+			Addr:    network.NodeAddress(c.node),
 			Socket:  2,
 		},
 		Src: ipx.HeaderAddr{
@@ -194,7 +194,7 @@ func (s *Server) processPacket(packetBytes []byte, addr *net.UDPAddr) {
 	if !ok {
 		return
 	}
-	if packet.Header.Src.Addr != srcClient.node.Address() {
+	if packet.Header.Src.Addr != network.NodeAddress(srcClient.node) {
 		return
 	}
 
@@ -266,8 +266,8 @@ func (s *Server) checkClientTimeouts() time.Time {
 		if now.After(timeoutTime) {
 			s.log(("client %s (IPX address %s) timed out: " +
 				"nothing received since %s. %s"),
-				addrStr, c.node.Address(), c.lastReceiveTime,
-				&c.stats)
+				addrStr, network.NodeAddress(c.node),
+				c.lastReceiveTime, &c.stats)
 			delete(s.clients, c.addr.String())
 			c.node.Close()
 		}
