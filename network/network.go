@@ -25,6 +25,8 @@ type Node interface {
 	GetProperty(value interface{}) bool
 }
 
+// NodeAddress returns the IPX address assigned too the given node, or it
+// returns ipx.AddrNull if there is no assigned address.
 func NodeAddress(n Node) ipx.Addr {
 	var result ipx.Addr
 	if !n.GetProperty(&result) {
