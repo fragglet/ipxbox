@@ -11,6 +11,7 @@ import (
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/filter"
+	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
@@ -118,6 +119,7 @@ func main() {
 	if !*allowNetBIOS {
 		net = filter.New(net)
 	}
+	net = stats.New(net)
 
 	if *enableSyslog {
 		var err error

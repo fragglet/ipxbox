@@ -2,7 +2,6 @@
 package server
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/stats"
 )
 
 // Config contains configuration parameters for an IPX server.
@@ -30,19 +30,12 @@ type Config struct {
 	Logger *log.Logger
 }
 
-type clientStatistics struct {
-	rxPackets, txPackets uint64
-	rxBytes, txBytes     uint64
-	connectTime          time.Time
-}
-
 // client represents a client that is connected to an IPX server.
 type client struct {
 	addr            *net.UDPAddr
 	node            network.Node
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
-	stats           clientStatistics
 }
 
 // Server is the top-level struct representing an IPX server that listens
@@ -67,15 +60,6 @@ var (
 
 	_ = (io.Closer)(&Server{})
 )
-
-func (cs *clientStatistics) String() string {
-	result := fmt.Sprintf("connected for %s; ", time.Since(cs.connectTime))
-	result += fmt.Sprintf("received %d packets (%d bytes), ",
-		cs.rxPackets, cs.rxBytes)
-	result += fmt.Sprintf("sent %d packets (%d bytes)",
-		cs.txPackets, cs.txBytes)
-	return result
-}
 
 // New creates a new Server, listening on the given address.
 func New(addr string, n network.Network, c *Config) (*Server, error) {
@@ -118,8 +102,6 @@ func (s *Server) runClient(c *client) {
 			continue
 		}
 		s.socket.WriteToUDP(packetBytes, c.addr)
-		c.stats.txPackets++
-		c.stats.txBytes += uint64(len(packetBytes))
 	}
 }
 
@@ -140,9 +122,6 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 			addr:            addr,
 			lastReceiveTime: now,
 			node:            s.net.NewNode(),
-			stats: clientStatistics{
-				connectTime: now,
-			},
 		}
 
 		s.clients[addrStr] = c
@@ -197,10 +176,6 @@ func (s *Server) processPacket(packetBytes []byte, addr *net.UDPAddr) {
 	if packet.Header.Src.Addr != network.NodeAddress(srcClient.node) {
 		return
 	}
-
-	// Update statistics.
-	srcClient.stats.rxPackets++
-	srcClient.stats.rxBytes += uint64(len(packetBytes))
 
 	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
@@ -267,7 +242,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 			s.log(("client %s (IPX address %s) timed out: " +
 				"nothing received since %s. %s"),
 				addrStr, network.NodeAddress(c.node),
-				c.lastReceiveTime, &c.stats)
+				c.lastReceiveTime, stats.Summary(c.node))
 			delete(s.clients, c.addr.String())
 			c.node.Close()
 		}
