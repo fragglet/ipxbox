@@ -26,14 +26,6 @@ const (
 type Network struct {
 	mu         sync.RWMutex
 	nodesByIPX map[ipx.Addr]*node
-	nextTapID  int
-	taps       map[int]*Tap
-}
-
-type Tap struct {
-	net    *Network
-	rxpipe ipx.ReadWriteCloser
-	id     int
 }
 
 type node struct {
@@ -45,7 +37,6 @@ type node struct {
 var (
 	_ = (network.Network)(&Network{})
 	_ = (network.Node)(&node{})
-	_ = (ipx.ReadWriteCloser)(&Tap{})
 
 	// UnknownNodeError is returned by Network.WritePacket() if the
 	// destination MAC address is not associated with any known node.
@@ -80,26 +71,6 @@ func (n *node) GetProperty(x interface{}) bool {
 	default:
 		return false
 	}
-}
-
-// Close removes the tap from the network; no more packets will be delivered
-// to it and all future calls to ReadPacket() will return EOF.
-func (t *Tap) Close() error {
-	t.rxpipe.Close()
-	t.net.mu.Lock()
-	delete(t.net.taps, t.id)
-	t.net.mu.Unlock()
-	return nil
-}
-
-// ReadPacket reads a packet from the network tap.
-func (t *Tap) ReadPacket() (*ipx.Packet, error) {
-	return t.rxpipe.ReadPacket()
-}
-
-// WritePacket writes a packet into the network.
-func (t *Tap) WritePacket(packet *ipx.Packet) error {
-	return t.net.forwardPacket(packet, t)
 }
 
 // addNode adds a new node to the network, setting its address to an unused
@@ -160,26 +131,8 @@ func (n *Network) forwardBroadcastPacket(packet *ipx.Packet, src ipx.Writer) err
 	return nil
 }
 
-// forwardToTaps sends the given packet to all taps which are currently
-// listening to network traffic. We don't forward packets back to the source
-// that sent them, though.
-func (n *Network) forwardToTaps(packet *ipx.Packet, src ipx.Writer) {
-	taps := []*Tap{}
-	n.mu.RLock()
-	for _, tap := range n.taps {
-		if tap != src {
-			taps = append(taps, tap)
-		}
-	}
-	n.mu.RUnlock()
-	for _, tap := range taps {
-		tap.rxpipe.WritePacket(packet)
-	}
-}
-
 // forwardPacket receives a packet and forwards it on to another node.
 func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
-	n.forwardToTaps(packet, src)
 	if packet.Header.IsBroadcast() {
 		return n.forwardBroadcastPacket(packet, src)
 	}
@@ -195,26 +148,9 @@ func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
 	return node.rxpipe.WritePacket(packet)
 }
 
-// Tap creates a new network tap for listening to network traffic.
-// The caller must call ReadPacket() on the tap regularly otherwise not all
-// tapped packets may be captured.
-func (n *Network) Tap() *Tap {
-	n.mu.Lock()
-	tap := &Tap{
-		id:     n.nextTapID,
-		net:    n,
-		rxpipe: pipe.New(numBufferedPackets),
-	}
-	n.nextTapID++
-	n.taps[tap.id] = tap
-	n.mu.Unlock()
-	return tap
-}
-
 // New creates a new Network.
 func New() *Network {
 	return &Network{
 		nodesByIPX: map[ipx.Addr]*node{},
-		taps:       map[int]*Tap{},
 	}
 }

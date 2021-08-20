@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	"github.com/fragglet/ipxbox/bridge"
+	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/filter"
 	"github.com/fragglet/ipxbox/network/stats"
+	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
@@ -44,8 +46,7 @@ var (
 	enablePPTP      = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
 
-func printPackets(v *virtual.Network) {
-	tap := v.Tap()
+func printPackets(tap ipx.ReadCloser) {
 	defer tap.Close()
 	for {
 		packet, err := tap.ReadPacket()
@@ -114,8 +115,9 @@ func main() {
 	// feature. This approach allows for modularity and separation of
 	// concerns, avoiding the complexity of a big monolithic system.
 	var net network.Network
-	v := virtual.New()
-	net = v
+	net = virtual.New()
+	tappableLayer := tappable.New(net)
+	net = tappableLayer
 	if !*allowNetBIOS {
 		net = filter.New(net)
 	}
@@ -140,7 +142,7 @@ func main() {
 		}
 
 		p := phys.NewPhys(stream, framer)
-		tap := v.Tap()
+		tap := tappableLayer.NewTap()
 		go bridge.Run(tap, tap, p, p)
 		if *enableIpxpkt {
 			r := ipxpkt.NewRouter(net.NewNode())
@@ -148,7 +150,7 @@ func main() {
 		}
 	}
 	if *dumpPackets {
-		go printPackets(v)
+		go printPackets(tappableLayer.NewTap())
 	}
 	addQuakeProxies(net)
 	if *enablePPTP {
