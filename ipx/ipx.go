@@ -61,7 +61,7 @@ func (a *HeaderAddr) UnmarshalBinary(data []byte) error {
 	}
 	copy(a.Network[0:], data[0:4])
 	copy(a.Addr[0:], data[4:10])
-	a.Socket = (uint16(data[10]) << 8) | uint16(data[11])
+	a.Socket = binary.BigEndian.Uint16(data[10:12])
 	return nil
 }
 
@@ -70,8 +70,7 @@ func (a *HeaderAddr) MarshalBinary() ([]byte, error) {
 	result := make([]byte, 12)
 	copy(result[0:4], a.Network[0:4])
 	copy(result[4:10], a.Addr[0:])
-	result[10] = byte(a.Socket >> 8)
-	result[11] = byte(a.Socket & 0xff)
+	binary.BigEndian.PutUint16(result[10:12], a.Socket)
 	return result, nil
 }
 
@@ -95,13 +94,12 @@ func (h *Header) UnmarshalBinary(packet []byte) error {
 // MarshalBinary populates a slice of bytes from an IPX header.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	result := []byte{
-		byte(h.Checksum >> 8),
-		byte(h.Checksum & 0xff),
-		byte(h.Length >> 8),
-		byte(h.Length & 0xff),
+		0, 0, 0, 0,
 		h.TransControl,
 		h.PacketType,
 	}
+	binary.BigEndian.PutUint16(result[0:2], h.Checksum)
+	binary.BigEndian.PutUint16(result[2:4], h.Length)
 	dest, err := h.Dest.MarshalBinary()
 	if err != nil {
 		return nil, err
