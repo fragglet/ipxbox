@@ -5,6 +5,7 @@ package ipx
 import (
 	"bytes"
 	"encoding"
+	"encoding/binary"
 	"fmt"
 	"net"
 )
@@ -80,8 +81,8 @@ func (h *Header) UnmarshalBinary(packet []byte) error {
 		return fmt.Errorf("IPX header too short to decode: %d < %d", len(packet), HeaderLength)
 	}
 
-	h.Checksum = uint16((packet[0] << 8) | packet[1])
-	h.Length = uint16((packet[2] << 8) | packet[3])
+	h.Checksum = binary.BigEndian.Uint16(packet[0:2])
+	h.Length = binary.BigEndian.Uint16(packet[2:4])
 	h.TransControl = packet[4]
 	h.PacketType = packet[5]
 
