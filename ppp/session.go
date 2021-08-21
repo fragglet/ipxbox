@@ -101,7 +101,11 @@ func (s *Session) sendPackets() {
 			// Not yet in network state
 			continue
 		}
-		if err := s.sendPPP(packet.Payload, PPPTypeIPX); err != nil {
+		marshaled, err := packet.MarshalBinary()
+		if err != nil {
+			break
+		}
+		if err := s.sendPPP(marshaled, PPPTypeIPX); err != nil {
 			break
 		}
 	}
