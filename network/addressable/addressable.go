@@ -16,8 +16,6 @@ var (
 	_ = (network.Network)(&addressableNetwork{})
 	_ = (network.Node)(&node{})
 
-	zeroNetwork = [4]byte{0, 0, 0, 0}
-
 	// WrongAddressError is returned when a packet is written with the
 	// wrong source IPX address.
 	WrongAddressError = errors.New("packet has wrong source address")
@@ -66,7 +64,7 @@ func (n *node) ReadPacket() (*ipx.Packet, error) {
 			return nil, err
 		}
 		dest := &packet.Header.Dest
-		if dest.Network == zeroNetwork {
+		if dest.Network == ipx.ZeroNetwork {
 			if dest.Addr == n.addr {
 				break
 			}
@@ -82,7 +80,7 @@ func (n *node) ReadPacket() (*ipx.Packet, error) {
 
 func (n *node) WritePacket(packet *ipx.Packet) error {
 	src := &packet.Header.Src
-	if src.Network != zeroNetwork || src.Addr != n.addr {
+	if src.Network != ipx.ZeroNetwork || src.Addr != n.addr {
 		return WrongAddressError
 	}
 	return n.inner.WritePacket(packet)

@@ -3,7 +3,6 @@
 package ipx
 
 import (
-	"bytes"
 	"encoding"
 	"encoding/binary"
 	"fmt"
@@ -38,6 +37,9 @@ var (
 	_ = (encoding.BinaryUnmarshaler)(&HeaderAddr{})
 	_ = (encoding.BinaryMarshaler)(&Header{})
 	_ = (encoding.BinaryUnmarshaler)(&Header{})
+
+	// For our purposes we always use network zero.
+	ZeroNetwork = [4]byte{0, 0, 0, 0}
 
 	AddrNull      = Addr([6]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	AddrBroadcast = Addr([6]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
@@ -114,9 +116,9 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 }
 
 func (h *Header) IsRegistrationPacket() bool {
-	return h.Dest.Socket == 2 && bytes.Equal(h.Dest.Addr[0:], AddrNull[:])
+	return h.Dest.Socket == 2 && h.Dest.Network == ZeroNetwork && h.Dest.Addr == AddrNull
 }
 
 func (h *Header) IsBroadcast() bool {
-	return bytes.Equal(h.Dest.Addr[0:], AddrBroadcast[:])
+	return h.Dest.Addr == AddrBroadcast
 }
