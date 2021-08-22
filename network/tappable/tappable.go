@@ -120,9 +120,9 @@ func (t *tap) Close() error {
 	return t.node.Close()
 }
 
-// New creates a TappableNetwork that wraps another network but also allows
+// Wrap creates a TappableNetwork that wraps another network but also allows
 // taps that can be used to snoop on traffic.
-func New(n network.Network) *TappableNetwork {
+func Wrap(n network.Network) *TappableNetwork {
 	return &TappableNetwork{
 		inner: n,
 		taps:  make(map[int]*tap),

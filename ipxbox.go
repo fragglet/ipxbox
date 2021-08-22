@@ -125,13 +125,13 @@ func makeNetwork() (network.Network, *tappable.TappableNetwork) {
 	//  5. ReadPacket() by server, and transmit to client.
 	var net network.Network
 	net = ipxswitch.New()
-	tappableLayer := tappable.New(net)
+	tappableLayer := tappable.Wrap(net)
 	net = tappableLayer
 	if !*allowNetBIOS {
-		net = filter.New(net)
+		net = filter.Wrap(net)
 	}
-	net = addressable.New(net)
-	net = stats.New(net)
+	net = addressable.Wrap(net)
+	net = stats.Wrap(net)
 	return net, tappableLayer
 }
 

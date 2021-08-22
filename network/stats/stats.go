@@ -84,9 +84,9 @@ func (n *node) GetProperty(x interface{}) bool {
 	}
 }
 
-// New creates a network that wraps the given network but gathers statistics
+// Wrap creates a network that wraps the given network but gathers statistics
 // about packets that are sent and received.
-func New(n network.Network) network.Network {
+func Wrap(n network.Network) network.Network {
 	return &statsNetwork{inner: n}
 }
 

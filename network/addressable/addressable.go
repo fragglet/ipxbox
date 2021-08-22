@@ -105,9 +105,9 @@ func (n *node) GetProperty(x interface{}) bool {
 	}
 }
 
-// New creates a network that wraps the given network but assigns a unique
+// Wrap creates a network that wraps the given network but assigns a unique
 // IPX address to each node.
-func New(n network.Network) network.Network {
+func Wrap(n network.Network) network.Network {
 	return &addressableNetwork{
 		inner:      n,
 		nodesByIPX: map[ipx.Addr]*node{},

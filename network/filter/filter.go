@@ -60,8 +60,8 @@ func (n *node) GetProperty(x interface{}) bool {
 	return n.inner.GetProperty(x)
 }
 
-// New creates a network that wraps the given network but rejects packets
+// Wrap creates a network that wraps the given network but rejects packets
 // using certain well-known port numbers which could present a security risk.
-func New(n network.Network) network.Network {
+func Wrap(n network.Network) network.Network {
 	return &filteringNetwork{inner: n}
 }
