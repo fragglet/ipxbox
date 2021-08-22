@@ -1,9 +1,9 @@
-// Package virtual contains an implementation of an IPX network that
-// forwards packets between nodes, similar to a network switch.
-package virtual
+// Package ipxswitch contains an implementation of an IPX network that
+// emulates the behavior of an Ethernet hub (but IPX native).
+// TODO: Emulate the behavior of an Ethernet switch.
+package ipxswitch
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,12 +25,13 @@ const (
 
 type Network struct {
 	mu         sync.RWMutex
-	nodesByIPX map[ipx.Addr]*node
+	nodesByID map[int]*node
+	nextNodeID int
 }
 
 type node struct {
 	net    *Network
-	addr   ipx.Addr
+	nodeID int
 	rxpipe ipx.ReadWriteCloser
 }
 
@@ -46,11 +47,10 @@ var (
 // Close removes the node from its parent network; future calls to ReadPacket()
 // will return EOF and packets sent to its address will not be delivered.
 func (n *node) Close() error {
-	n.rxpipe.Close()
 	n.net.mu.Lock()
-	delete(n.net.nodesByIPX, n.addr)
+	delete(n.net.nodesByID, n.nodeID)
 	n.net.mu.Unlock()
-	return nil
+	return n.rxpipe.Close()
 }
 
 // ReadPacket reads a packet from the network for this node.
@@ -64,34 +64,7 @@ func (n *node) WritePacket(packet *ipx.Packet) error {
 }
 
 func (n *node) GetProperty(x interface{}) bool {
-	switch x.(type) {
-	case *ipx.Addr:
-		*x.(*ipx.Addr) = n.addr
-		return true
-	default:
-		return false
-	}
-}
-
-// addNode adds a new node to the network, setting its address to an unused
-// address.
-func (n *Network) addNode(node *node) {
-	// Repeatedly generate a new IPX address until we generate one that
-	// is not already in use. A prefix of 02:... gives a Unicast address
-	// that is locally administered.
-	for {
-		var addr ipx.Addr
-		addr[0] = 0x02
-		rand.Read(addr[1:])
-		n.mu.Lock()
-		if _, ok := n.nodesByIPX[addr]; !ok {
-			node.addr = addr
-			n.nodesByIPX[addr] = node
-			n.mu.Unlock()
-			return
-		}
-		n.mu.Unlock()
-	}
+	return false
 }
 
 // NewNode creates a new node on the network.
@@ -100,23 +73,25 @@ func (n *Network) NewNode() network.Node {
 		net:    n,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
-	n.addNode(node)
+	n.mu.Lock()
+	node.nodeID = n.nextNodeID
+	n.nextNodeID++
+	n.nodesByID[node.nodeID] = node
+	n.mu.Unlock()
 	return node
 }
 
-// forwardBroadcastPacket takes a broadcast packet received from a node and
-// forwards it to all other clients; however, it is never sent back to the
-// source node from which it came.
-func (n *Network) forwardBroadcastPacket(packet *ipx.Packet, src ipx.Writer) error {
-	errs := []string{}
+// forwardPacket receives a packet and forwards it on to another node.
+func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
 	nodes := []*node{}
 	n.mu.RLock()
-	for _, node := range n.nodesByIPX {
+	for _, node := range n.nodesByID {
 		if node != src {
 			nodes = append(nodes, node)
 		}
 	}
 	n.mu.RUnlock()
+	errs := []string{}
 	for _, node := range nodes {
 		// Packet is written into the delivery pipe for the node; the
 		// owner of the node will receive it by calling ReadPacket()
@@ -126,31 +101,14 @@ func (n *Network) forwardBroadcastPacket(packet *ipx.Packet, src ipx.Writer) err
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("errors when forwarding broadcast packets: %v", strings.Join(errs, "; "))
+		return fmt.Errorf("errors when forwarding packets: %v", strings.Join(errs, "; "))
 	}
 	return nil
-}
-
-// forwardPacket receives a packet and forwards it on to another node.
-func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
-	if packet.Header.IsBroadcast() {
-		return n.forwardBroadcastPacket(packet, src)
-	}
-
-	// We can only forward it on if the destination IPX address corresponds
-	// to a node that we know about:
-	n.mu.RLock()
-	node, ok := n.nodesByIPX[packet.Header.Dest.Addr]
-	n.mu.RUnlock()
-	if !ok {
-		return UnknownNodeError
-	}
-	return node.rxpipe.WritePacket(packet)
 }
 
 // New creates a new Network.
 func New() *Network {
 	return &Network{
-		nodesByIPX: map[ipx.Addr]*node{},
+		nodesByID: map[int]*node{},
 	}
 }

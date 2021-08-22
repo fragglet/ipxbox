@@ -11,7 +11,9 @@ import (
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
+	"github.com/fragglet/ipxbox/network/ipxswitch"
 	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
@@ -19,7 +21,6 @@ import (
 	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/syslog"
-	"github.com/fragglet/ipxbox/virtual"
 
 	"github.com/google/gopacket/pcap"
 	"github.com/songgao/water"
@@ -104,24 +105,42 @@ func addQuakeProxies(net network.Network) {
 	}
 }
 
+func makeNetwork() (network.Network, *tappable.TappableNetwork) {
+	// We build the network up in layers, each layer adding an extra
+	// feature. This approach allows for modularity and separation of
+	// concerns, avoiding the complexity of a big monolithic system.
+	// This is best read in reverse order. Life of an rx packet:
+	//  1. Packet received from client; WritePacket() by server
+	//  2. Check source address matches client address (addressable)
+	//  3. Increment receive statistics (stats)
+	//  4. Drop packet if a NetBIOS packet (filter)
+	//  5. Fork incoming traffic to any network taps (tappable)
+	//  6. Forward to receive queue(s) of other clients (ipxswitch)
+	// Then back out the other way (tx):
+	//  1. Read packet from receive queue (ipxswitch)
+	//  2. No-op (tappable)
+	//  3. Filter NetBIOS packets (filter)
+	//  4. Increment transmit statistics (stats)
+	//  5. Check dest address matches client address (addressable)
+	//  5. ReadPacket() by server, and transmit to client.
+	var net network.Network
+	net = ipxswitch.New()
+	tappableLayer := tappable.New(net)
+	net = tappableLayer
+	if !*allowNetBIOS {
+		net = filter.New(net)
+	}
+	net = addressable.New(net)
+	net = stats.New(net)
+	return net, tappableLayer
+}
+
 func main() {
 	flag.Parse()
 
 	var cfg server.Config
 	cfg = *server.DefaultConfig
 	cfg.ClientTimeout = *clientTimeout
-
-	// We build the network up in layers, each layer adding an extra
-	// feature. This approach allows for modularity and separation of
-	// concerns, avoiding the complexity of a big monolithic system.
-	var net network.Network
-	net = virtual.New()
-	tappableLayer := tappable.New(net)
-	net = tappableLayer
-	if !*allowNetBIOS {
-		net = filter.New(net)
-	}
-	net = stats.New(net)
 
 	if *enableSyslog {
 		var err error
@@ -131,6 +150,8 @@ func main() {
 			log.Fatalf("failed to init syslog: %v", err)
 		}
 	}
+
+	net, tappableLayer := makeNetwork()
 
 	stream, err := ethernetStream()
 	if err != nil {
