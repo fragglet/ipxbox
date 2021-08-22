@@ -173,9 +173,6 @@ func (s *Server) processPacket(packetBytes []byte, addr *net.UDPAddr) {
 	if !ok {
 		return
 	}
-	if packet.Header.Src.Addr != network.NodeAddress(srcClient.node) {
-		return
-	}
 
 	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
