@@ -21,6 +21,7 @@ your system. First check that it is installed by going to Control Panel
 → Add/Remove Programs → Windows Setup. Open the Communications component
 and ensure that "Virtual Private Networking" is ticked.
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![Add/Remove Programs Dialog](images/add-vpn.png)
 
 If not installed, Windows will prompt you for the Windows install CD in
@@ -29,14 +30,17 @@ Networking and create a new connection. Select "Microsoft VPN Adapter"
 as the device, and on the second page, type the host name or IP address
 of the `ipxbox` server.
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![New Connection Wizard Page 1](images/create-connection1.png)
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![New Connection Wizard Page 2](images/create-connection2.png)
 
 Now you can try out your new connection. Open it from the "Dial-up
 Networking" window and you should see a dialog similar to the
 following:
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![DUN "Connect To" dialog](images/dun-connect-to.png)
 
 Check again that the VPN server address is correct, then press
@@ -50,6 +54,7 @@ the server. If this happens, it is possible that you don't have the IPX
 protocol installed. To check, go to Control Panel → Network, and check
 the list of network components.
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![Network Settings dialog](images/network-settings.png)
 
 Check that at least the following are present:
@@ -61,6 +66,7 @@ If these aren't present, click "Add...". For component type, choose
 "Protocol" and click "Add...". Then choose "Microsoft" as the
 manufacturer and select "IPX/SPX-compatible Protocol":
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![Add Network Protocol windows](images/add-ipx.png)
 
 Windows will prompt you for the Windows install CD in order to install

@@ -114,6 +114,7 @@ find the instance of "IPX/SPX-compatible Protocol" that is bound to your
 network card. Click "Properties", then the "Advanced" tab, and "Frame
 Type".
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![IPX/SPX Frame Type Configuration](images/win9x-frametype.png)
 
 | ipxbox name | Name used in Windows 9x | Description |
@@ -137,6 +138,7 @@ To configure framing, go to Control Panels → MacIPX. Double click
 MacIPX attempts to automatically configure framing but you can disable this
 and manually specify it.
 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![MacIPX Frame Type Configuration](images/macipx-frametype.png)
 
 | ipxbox name | Name used in MacIPX | Description |
