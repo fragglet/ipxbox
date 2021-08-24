@@ -71,9 +71,9 @@ be changed by using the `--ethernet_framing` command line flag. For example:
 
 | Option value | Description | Notes |
 | ------------ | ----------- | ----- |
-| `802.2` | [IEEE 802.2 standard](https://en.wikipedia.org/wiki/IEEE_802.2) | ipxbox default, default for Novell Netware from v4.10 onwards  |
+| `802.2` | IEEE 802.3 with [802.2 LLC header](https://en.wikipedia.org/wiki/IEEE_802.2) | ipxbox default, default for Novell Netware from v4.10 onwards  |
 | `802.3raw` | [Novell raw IEEE 802.3](https://en.wikipedia.org/wiki/Ethernet_frame#Novell_raw_IEEE_802.3) | Default for the Novell Netware stack until Netware 4.10 |
-| `snap` | [IEEE 802.2 LLC with SNAP header](https://en.wikipedia.org/wiki/Subnetwork_Access_Protocol) | |
+| `snap` | [IEEE 802.3 with 802.2 LLC and SNAP headers](https://en.wikipedia.org/wiki/Subnetwork_Access_Protocol) | |
 | `eth-ii` | [Ethernet II](https://en.wikipedia.org/wiki/Ethernet_frame#Ethernet_II) | Most common framing format on modern LANs |
 
 ### Novell stack
@@ -93,9 +93,9 @@ The following table shows the valid values for the `FRAME` field:
 
 | ipxbox name | Name used in NET.CFG | Description |
 | ----------- | -------------------- | ----------- |
-| `802.2` | `Ethernet_802.2` | IEEE 802.2 standard, earlier default |
-| `802.3raw` | `Ethernet_802.3` | Novell raw IEEE 802.3, later default |
-| `snap` | `Ethernet_SNAP` | 802.2 LLC with SNAP header |
+| `802.2` | `Ethernet_802.2` | 802.3 with 802.2 LLC header; later Netware default (v4.10 onwards) |
+| `802.3raw` | `Ethernet_802.3` | Novell raw IEEE 802.3, older Netware default |
+| `snap` | `Ethernet_SNAP` | 802.3 with 802.2 LLC and SNAP headers |
 | `eth-ii` | `Ethernet_II` | Ethernet II |
 
 ### Packet driver IPX
@@ -119,7 +119,7 @@ Type".
 
 | ipxbox name | Name used in Windows 9x | Description |
 | ----------- | ----------------------- | ----------- |
-| `802.2` | Ethernet 802.2 | IEEE 802.2 standard |
+| `802.2` | Ethernet 802.2 | 802.3 with 802.2 LLC header |
 | `802.3raw` | Ethernet 802.3 | Novell raw IEEE 802.3 |
 | `eth-ii` | Ethernet II | Ethernet II |
 | | Token Ring | Do not use |
@@ -143,9 +143,9 @@ and manually specify it.
 
 | ipxbox name | Name used in MacIPX | Description |
 | ----------- | ------------------- | ----------- |
-| `802.2` | Ethernet 802.2 | IEEE 802.2 standard |
+| `802.2` | Ethernet 802.2 | 802.3 with 802.2 LLC header |
 | `802.3raw` | Ethernet 802.3 | Novell raw IEEE 802.3 |
-| `snap` | Ethernet 802.2 SNAP | 802.2 LLC with SNAP header |
+| `snap` | Ethernet 802.2 SNAP | 802.3 with 802.2 LLC and SNAP headers |
 | `eth-ii` | Ethernet II | Ethernet II |
 
 ## Advanced topic: IPX packet driver routing
