@@ -19,6 +19,8 @@ var (
 		0x452:  true, // SAP
 		0x453:  true, // RIP
 		0x455:  true, // NetBIOS
+		0x551:  true, // NWLink SMB Name Query
+		0x552:  true, // NWLink SMB Redirector
 		0x553:  true, // NWLink datagram, may contain SMB
 		0x900F: true, // SNMP over IPX, RFC 1298
 		0x9010: true, // SNMP over IPX, RFC 1298
