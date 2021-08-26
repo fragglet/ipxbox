@@ -1,15 +1,15 @@
 
 `ipxbox` by default just acts as a forwarding server between DOSbox clients,
 but it can be configured to bridge to a real network. What this means is
-that any clients connected to the server will also be connected to your
+that any clients connected to the server will also be connected to that
 network - similar to a VPN (unlike a VPN, it's not granting complete access
-to your entire network, only the IPX protocol). If you have retro computers
-you can use this as a method to play online with other people, by having
-them connect to your `ipxbox` server.
+to your entire network, only to things that use the IPX protocol, and nowadays
+few things do). If you have retro computers you can use this as a method to
+play online with other people, by having them connect to your `ipxbox` server.
 
-**First, a word of warning**: the DOSBox IPX protocol is completely insecure.
+**First, a word of warning**: DOSBox's IPX protocol is completely insecure.
 There's no encryption or authentication supported. For this reason, by default
-ipxbox blocks the IPX ports associated with Windows filesharing. There's not
+ipxbox blocks the IPX sockets associated with Windows file sharing. There's not
 a lot of damage you can do with the IPX protocol nowadays but there's still the
 possibility that if you use this on a public server, you might be exposing
 something on your network that you don't intend to.
@@ -22,12 +22,14 @@ Find out which Ethernet interface (network card) you want to use by using the
 Linux `ifconfig` command. Usually the interface will be named something like
 `eth0` but it can vary sometimes.
 
-Programs don't usually have the permission to do raw network access. You'll
-need to grant it to the `ipxbox` binary:
+Programs don't usually have the permission to do raw network access. On Linux
+you can grant it to the `ipxbox` binary with the following command:
 ```
 sudo setcap cap_net_raw,cap_net_admin=eip ./ipxbox
 ```
-Then run `ipxbox` with the `--pcap_device` argument, eg.
+On other systems (BSD, etc.) only the `root` user can access raw sockets.
+
+Next run `ipxbox` with the `--pcap_device` argument, eg.
 ```
 ./ipxbox --port=10000 --pcap_device=eth0
 ```
@@ -48,31 +50,32 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 ## Configuring frame type
 
 After following the above instructions you might find problems getting a
-retro computer to talk to dosbox clients. The usual symptom will be that
-dosbox clients will be able to see network traffic from the retro machine
+retro computer to talk to DOSBox clients. The usual symptom will be that
+DOSBox clients will be able to see network traffic from the retro machine
 but not vice versa. This is most likely caused by a mismatch in
 *frame type* configuration.
 
 Put simply, when IPX packets are transmitted on a LAN there are four
 different ways that they can be represented. It is important that all
-machines on the network are using the same setting (or "talking the same
-language" to use a metaphor). Different operating systems and network
-stacks have different defaults, and even the default can even vary between
-versions.  If the machines aren't talking to each other, this should be
+machines on the network are using the same setting (or to use a metaphor,
+they must all "talk the same language"). Different operating systems and
+network stacks have different defaults, and the default can even vary between
+versions. If the machines aren't talking to each other, this should be
 the first thing to check.
 
 ### ipxbox
 
-`ipxbox` itself by default uses IEEE 802.2 framing, but the framing format can
-be changed by using the `--ethernet_framing` command line flag. For example:
+`ipxbox` itself by default uses IEEE 802.2 LLC framing, but the framing
+format can be changed by using the `--ethernet_framing` command line flag.
+For example:
 ```
 ./ipxbox --port=10000 --pcap_device=eth0 --ethernet_framing=eth-ii
 ```
 
-| Option value | Description | Notes |
+| `--ethernet_framing` value | Description | Notes |
 | ------------ | ----------- | ----- |
 | `802.2` | IEEE 802.3 with [802.2 LLC header](https://en.wikipedia.org/wiki/IEEE_802.2) | ipxbox default, default for Novell Netware from v4.10 onwards  |
-| `802.3raw` | [Novell raw IEEE 802.3](https://en.wikipedia.org/wiki/Ethernet_frame#Novell_raw_IEEE_802.3) | Default for the Novell Netware stack until Netware 4.10 |
+| `802.3raw` | [Novell raw IEEE 802.3](https://en.wikipedia.org/wiki/Ethernet_frame#Novell_raw_IEEE_802.3) | Older Novell Netware default until Netware v4.10 |
 | `snap` | [IEEE 802.3 with 802.2 LLC and SNAP headers](https://en.wikipedia.org/wiki/Subnetwork_Access_Protocol) | |
 | `eth-ii` | [Ethernet II](https://en.wikipedia.org/wiki/Ethernet_frame#Ethernet_II) | Most common framing format on modern LANs |
 
@@ -135,8 +138,8 @@ to join in games with DOS machines.
 
 To configure framing, go to Control Panels → MacIPX. Double click
 "Ethernet" to open the Ethernet Access Configuration window. By default
-MacIPX attempts to automatically configure framing but you can disable this
-and manually specify it.
+MacIPX attempts to automatically configure framing but if you encounter
+problems you can disable autodetection and manually specify it.
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 ![MacIPX Frame Type Configuration](images/macipx-frametype.png)
@@ -148,7 +151,7 @@ and manually specify it.
 | `snap` | Ethernet 802.2 SNAP | 802.3 with 802.2 LLC and SNAP headers |
 | `eth-ii` | Ethernet II | Ethernet II |
 
-## Advanced topic: IPX packet driver routing
+## Advanced topic: TCP/IP over IPX
 
 Much DOS software that communicates over the network (particularly using the
 TCP/IP protocol stack used on the Internet) uses the
