@@ -45,7 +45,7 @@ var (
 )
 
 // Close removes the node from its parent network; future calls to ReadPacket()
-// will return EOF and packets sent to its address will not be delivered.
+// will return an error and packets sent to its address will not be delivered.
 func (n *node) Close() error {
 	n.net.mu.Lock()
 	delete(n.net.nodesByID, n.nodeID)

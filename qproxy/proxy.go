@@ -237,11 +237,11 @@ func (p *Proxy) Run() {
 	for {
 		packet, err := p.node.ReadPacket()
 		switch {
-		case err == io.EOF:
+		case err == io.ErrClosedPipe:
 			return
 		case err != nil:
-			// Other errors are ignored.
-			continue
+			log.Printf("unexpected error reading from node: %v", err)
+			return
 		}
 
 		if packet.Header.Dest.Socket == quakeIPXSocket {

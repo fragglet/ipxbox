@@ -90,11 +90,12 @@ func (s *Server) runClient(c *client) {
 		switch {
 		case err == nil:
 			// Proceed with transmit below.
-		case err == io.EOF:
+		case err == io.ErrClosedPipe:
+			// Normal client shutdown/timeout.
 			return
 		default:
-			// Other errors are ignored.
-			continue
+			s.log("unexpected error reading packet for transmit: %v", err)
+			return
 		}
 		packetBytes, err := packet.MarshalBinary()
 		if err != nil {
