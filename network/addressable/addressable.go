@@ -4,6 +4,7 @@
 package addressable
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"sync"
@@ -55,11 +56,11 @@ type node struct {
 	addr  ipx.Addr
 }
 
-func (n *node) ReadPacket() (*ipx.Packet, error) {
+func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	var packet *ipx.Packet
 	for {
 		var err error
-		packet, err = n.inner.ReadPacket()
+		packet, err = n.inner.ReadPacket(ctx)
 		if err != nil {
 			return nil, err
 		}

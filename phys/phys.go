@@ -3,6 +3,7 @@
 package phys
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -48,7 +49,9 @@ func (p *Phys) Close() error {
 
 // ReadPacket implements the ipx.Reader interface, and will block until an
 // IPX packet is read from the physical interface.
-func (p *Phys) ReadPacket() (*ipx.Packet, error) {
+func (p *Phys) ReadPacket(_ context.Context) (*ipx.Packet, error) {
+	// TODO: Move to a separate goroutine and make this function
+	// cancellable by context.
 	for {
 		pkt, err := p.ps.NextPacket()
 		if err != nil {

@@ -4,6 +4,7 @@
 package ipxswitch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,7 +26,7 @@ const (
 
 type Network struct {
 	mu         sync.RWMutex
-	nodesByID map[int]*node
+	nodesByID  map[int]*node
 	nextNodeID int
 }
 
@@ -54,8 +55,8 @@ func (n *node) Close() error {
 }
 
 // ReadPacket reads a packet from the network for this node.
-func (n *node) ReadPacket() (*ipx.Packet, error) {
-	return n.rxpipe.ReadPacket()
+func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return n.rxpipe.ReadPacket(ctx)
 }
 
 // WritePacket writes a packet into the network from the given node.

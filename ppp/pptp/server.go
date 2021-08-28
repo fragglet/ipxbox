@@ -6,6 +6,7 @@
 package pptp
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -108,7 +109,7 @@ func (c *Connection) Close() error {
 	}
 }
 
-func (c *Connection) startPPPSession(sendCallID uint16) {
+func (c *Connection) startPPPSession(ctx context.Context, sendCallID uint16) {
 	if c.ppp != nil {
 		return
 	}
@@ -123,7 +124,7 @@ func (c *Connection) startPPPSession(sendCallID uint16) {
 	node := c.s.n.NewNode()
 	c.ppp = ppp.NewSession(gre, node)
 	go func() {
-		err := c.ppp.Run()
+		err := c.ppp.Run(ctx)
 		if err != nil {
 			// TODO: log error?
 		}
@@ -133,13 +134,13 @@ func (c *Connection) startPPPSession(sendCallID uint16) {
 	}()
 }
 
-func (c *Connection) handleOutgoingCall(msg []byte) {
+func (c *Connection) handleOutgoingCall(ctx context.Context, msg []byte) {
 	if len(msg) < 22 {
 		return
 	}
 	// Start up GRE session if we have not already.
 	sendCallID := binary.BigEndian.Uint16(msg[10:12])
-	c.startPPPSession(sendCallID)
+	c.startPPPSession(ctx, sendCallID)
 	reply := []byte{
 		0x00, 0x01, // Message type
 		0x1a, 0x2b, 0x3c, 0x4d, // Magic cookie
@@ -196,7 +197,7 @@ func (c *Connection) readNextMessage() ([]byte, error) {
 	return result, nil
 }
 
-func (c *Connection) run() {
+func (c *Connection) run(ctx context.Context) {
 messageLoop:
 	for {
 		// TODO: Send periodic Echo-Requests to keep the TCP stream
@@ -213,7 +214,7 @@ messageLoop:
 		case msgEchoRequest:
 			c.handleEcho(msg)
 		case msgOutgoingCallRequest:
-			c.handleOutgoingCall(msg)
+			c.handleOutgoingCall(ctx, msg)
 		case msgCallClearRequest:
 			break messageLoop
 		}
@@ -241,14 +242,15 @@ type Server struct {
 
 // Run listens for and accepts new connections to the server. It blocks until
 // the server is shut down, so it should be invoked in a dedicated goroutine.
-func (s *Server) Run() {
+func (s *Server) Run(ctx context.Context) {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			break
 		}
+		// TODO: Subcontext per connection and cancel on close
 		c := newConnection(s, conn, s.nextCallID)
-		go c.run()
+		go c.run(ctx)
 		s.nextCallID = (s.nextCallID + 1) & 0xffff
 	}
 	s.listener.Close()

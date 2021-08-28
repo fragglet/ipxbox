@@ -1,9 +1,11 @@
 package ppp
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"math/rand"
 	"strings"
@@ -88,11 +90,11 @@ func (s *Session) Terminated() bool {
 
 // sendPackets continually reads packets from upstream and forwards them over
 // the PPP channel.
-func (s *Session) sendPackets() {
+func (s *Session) sendPackets(ctx context.Context) error {
 	for !s.Terminated() {
-		packet, err := s.node.ReadPacket()
+		packet, err := s.node.ReadPacket(ctx)
 		if err != nil {
-			break
+			return err
 		}
 		s.mu.Lock()
 		ok := s.state == stateNetwork
@@ -103,12 +105,13 @@ func (s *Session) sendPackets() {
 		}
 		marshaled, err := packet.MarshalBinary()
 		if err != nil {
-			break
+			return err
 		}
 		if err := s.sendPPP(marshaled, PPPTypeIPX); err != nil {
-			break
+			return err
 		}
 	}
+	return nil
 }
 
 func (s *Session) handleLCP(l *lcp.LCP) bool {
@@ -221,6 +224,7 @@ func (s *Session) negotiate() error {
 		},
 	}
 	s.negotiators[lcp.PPPTypeLCP] = n
+	// TODO: Upgrade option negotiation to use contexts.
 	go n.StartNegotiation()
 
 	for {
@@ -344,15 +348,29 @@ func (s *Session) doRun() error {
 // negotiation and then runs the main loop that receives PPP frames and
 // forwards the encapsulated IPX frames upstream. When it returns, the session
 // has terminated (either normally or due to failure to negotiate).
-func (s *Session) Run() error {
-	go s.sendPackets()
-	err := s.doRun()
-	// If the error is because the connection was closed or the node was
-	// shut down, ignore it. This is a normal part of shutdown process.
-	// TODO: Use net.ErrClosed; it is too new at time of writing
-	if errors.Is(err, io.ErrClosedPipe) || err != nil && strings.Contains(err.Error(), "closed") {
-		err = nil
-	}
+func (s *Session) Run(ctx context.Context) error {
+	// We run the packet receive goroutine with a child context we cancel
+	// before we finish.
+	eg, subctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return s.sendPackets(subctx)
+	})
+	eg.Go(func() error {
+		// Main session logic.
+		err := s.doRun()
+		// If the error is because the connection was closed or the
+		// node was shut down, ignore it. This is a normal part of
+		// shutdown process.
+		// TODO: Use net.ErrClosed; it is too new at time of writing
+		if errors.Is(err, io.ErrClosedPipe) {
+			return nil
+		}
+		if err != nil && strings.Contains(err.Error(), "closed") {
+			return nil
+		}
+		return err
+	})
+	err := eg.Wait()
 	if s.terminateError != nil {
 		err = s.terminateError
 	} else {

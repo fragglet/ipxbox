@@ -3,6 +3,7 @@
 package qproxy
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -232,10 +233,10 @@ func (p *Proxy) garbageCollect() {
 	}
 }
 
-func (p *Proxy) Run() {
+func (p *Proxy) Run(ctx context.Context) {
 	go p.garbageCollect()
 	for {
-		packet, err := p.node.ReadPacket()
+		packet, err := p.node.ReadPacket(ctx)
 		switch {
 		case err == io.ErrClosedPipe:
 			return

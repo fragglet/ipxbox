@@ -9,6 +9,7 @@
 package pipe
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -17,6 +18,8 @@ import (
 )
 
 var (
+	_ = (ipx.ReadWriteCloser)(&pipe{})
+
 	PipeFullError = errors.New("pipe buffer is full")
 )
 
@@ -58,18 +61,22 @@ func (p *pipe) WritePacket(pkt *ipx.Packet) error {
 
 // ReadPacket blocks until data can be read into the provided buffer or until
 // the pipe is closed.
-func (p *pipe) ReadPacket() (*ipx.Packet, error) {
+func (p *pipe) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	p.mu.Lock()
 	closed := p.closed
 	p.mu.Unlock()
 	if closed {
 		return nil, io.ErrClosedPipe
 	}
-	pkt, ok := <-p.ch
-	if !ok {
-		return nil, io.ErrClosedPipe
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case pkt, ok := <-p.ch:
+		if !ok {
+			return nil, io.ErrClosedPipe
+		}
+		return pkt, nil
 	}
-	return pkt, nil
 }
 
 // New returns a new pipe that buffers `size` number of writes internally.

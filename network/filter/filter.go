@@ -3,6 +3,7 @@
 package filter
 
 import (
+	"context"
 	"errors"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -43,8 +44,8 @@ type node struct {
 	inner network.Node
 }
 
-func (n *node) ReadPacket() (*ipx.Packet, error) {
-	return n.inner.ReadPacket()
+func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return n.inner.ReadPacket(ctx)
 }
 
 func (n *node) WritePacket(packet *ipx.Packet) error {

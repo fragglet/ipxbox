@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -84,9 +85,9 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 // runClient continually copies packets from the client's node and sends them
 // to the connected UDP client. The function will only return when the client's
 // network node is Close()d.
-func (s *Server) runClient(c *client) {
+func (s *Server) runClient(ctx context.Context, c *client) {
 	for {
-		packet, err := c.node.ReadPacket()
+		packet, err := c.node.ReadPacket(ctx)
 		switch {
 		case err == nil:
 			// Proceed with transmit below.
@@ -113,7 +114,7 @@ func (s *Server) log(format string, args ...interface{}) {
 }
 
 // newClient processes a registration packet, adding a new client if necessary.
-func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
+func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UDPAddr) {
 	addrStr := addr.String()
 	c, ok := s.clients[addrStr]
 
@@ -128,7 +129,8 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 		s.clients[addrStr] = c
 		s.log("new connection from %s, assigned IPX address %s",
 			addrStr, network.NodeAddress(c.node))
-		go s.runClient(c)
+		// TODO: Use cancellable context for client disconnect?
+		go s.runClient(ctx, c)
 	}
 
 	// Send a reply back to the client
@@ -157,14 +159,14 @@ func (s *Server) newClient(header *ipx.Header, addr *net.UDPAddr) {
 
 // processPacket decodes and processes a received UDP packet, sending responses
 // and forwarding the packet on to other clients as appropriate.
-func (s *Server) processPacket(packetBytes []byte, addr *net.UDPAddr) {
+func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *net.UDPAddr) {
 	packet := &ipx.Packet{}
 	if err := packet.UnmarshalBinary(packetBytes); err != nil {
 		return
 	}
 
 	if packet.Header.IsRegistrationPacket() {
-		s.newClient(&packet.Header, addr)
+		s.newClient(ctx, &packet.Header, addr)
 		return
 	}
 
@@ -258,14 +260,14 @@ func (s *Server) checkClientTimeouts() time.Time {
 
 // poll listens for new packets, blocking until one is received, or until
 // a timeout is reached.
-func (s *Server) poll() error {
+func (s *Server) poll(ctx context.Context) error {
 	var buf [1500]byte
 
 	s.socket.SetReadDeadline(s.timeoutCheckTime)
 	packetLen, addr, err := s.socket.ReadFromUDP(buf[:])
 
 	if err == nil {
-		s.processPacket(buf[0:packetLen], addr)
+		s.processPacket(ctx, buf[0:packetLen], addr)
 	} else if nerr, ok := err.(net.Error); ok && !nerr.Timeout() {
 		return err
 	}
@@ -280,9 +282,9 @@ func (s *Server) poll() error {
 }
 
 // Run runs the server, blocking until the socket is closed or an error occurs.
-func (s *Server) Run() {
+func (s *Server) Run(ctx context.Context) {
 	for {
-		if err := s.poll(); err != nil {
+		if err := s.poll(ctx); err != nil {
 			return
 		}
 	}

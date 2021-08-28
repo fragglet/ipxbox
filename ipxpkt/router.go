@@ -3,6 +3,7 @@
 package ipxpkt
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -60,8 +61,10 @@ func (r *Router) unwrapFrame(packet *ipx.Packet) ([]byte, error) {
 // readFrame reads an Ethernet frame from the router; it will block until
 // a complete frame arrives from another node.
 func (r *Router) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
+	// TODO: Better context we can use here?
+	ctx := context.Background()
 	for {
-		packet, err := r.node.ReadPacket()
+		packet, err := r.node.ReadPacket(ctx)
 		if err != nil {
 			return nil, gopacket.CaptureInfo{}, err
 		}

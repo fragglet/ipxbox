@@ -3,6 +3,7 @@
 package tappable
 
 import (
+	"context"
 	"sync"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -52,9 +53,10 @@ func (n *TappableNetwork) NewTap() ipx.ReadWriteCloser {
 	// We create an inner node for the tap, but just so that we can
 	// inject packets via WritePacket(). Any delivered packets just
 	// get read and discarded.
+	ctx := context.Background()
 	go func() {
 		for {
-			_, err := tap.node.ReadPacket()
+			_, err := tap.node.ReadPacket(ctx)
 			if err != nil {
 				break
 			}
@@ -82,8 +84,8 @@ type node struct {
 	net   *TappableNetwork
 }
 
-func (n *node) ReadPacket() (*ipx.Packet, error) {
-	return n.inner.ReadPacket()
+func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return n.inner.ReadPacket(ctx)
 }
 
 func (n *node) WritePacket(packet *ipx.Packet) error {
@@ -106,8 +108,8 @@ type tap struct {
 	tapID  int
 }
 
-func (t *tap) ReadPacket() (*ipx.Packet, error) {
-	return t.rxpipe.ReadPacket()
+func (t *tap) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return t.rxpipe.ReadPacket(ctx)
 }
 
 func (t *tap) WritePacket(packet *ipx.Packet) error {

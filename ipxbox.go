@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -47,10 +48,10 @@ var (
 	enablePPTP      = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
 
-func printPackets(tap ipx.ReadCloser) {
+func printPackets(ctx context.Context, tap ipx.ReadCloser) {
 	defer tap.Close()
 	for {
-		packet, err := tap.ReadPacket()
+		packet, err := tap.ReadPacket(ctx)
 		if err != nil {
 			break
 		}
@@ -92,7 +93,7 @@ func ethernetStream() (phys.DuplexEthernetStream, error) {
 	return handle, nil
 }
 
-func addQuakeProxies(net network.Network) {
+func addQuakeProxies(ctx context.Context, net network.Network) {
 	if *quakeServers == "" {
 		return
 	}
@@ -101,7 +102,7 @@ func addQuakeProxies(net network.Network) {
 			Address:     addr,
 			IdleTimeout: *clientTimeout,
 		}, net.NewNode())
-		go p.Run()
+		go p.Run(ctx)
 	}
 }
 
@@ -138,6 +139,8 @@ func makeNetwork() (network.Network, *tappable.TappableNetwork) {
 func main() {
 	flag.Parse()
 
+	ctx := context.Background()
+
 	var cfg server.Config
 	cfg = *server.DefaultConfig
 	cfg.ClientTimeout = *clientTimeout
@@ -164,26 +167,26 @@ func main() {
 
 		p := phys.NewPhys(stream, framer)
 		tap := tappableLayer.NewTap()
-		go bridge.Run(tap, tap, p, p)
+		go bridge.Run(ctx, tap, tap, p, p)
 		if *enableIpxpkt {
 			r := ipxpkt.NewRouter(net.NewNode())
 			go phys.CopyFrames(r, p.NonIPX())
 		}
 	}
 	if *dumpPackets {
-		go printPackets(tappableLayer.NewTap())
+		go printPackets(ctx, tappableLayer.NewTap())
 	}
-	addQuakeProxies(net)
+	addQuakeProxies(ctx, net)
 	if *enablePPTP {
 		pptps, err := pptp.NewServer(net)
 		if err != nil {
 			log.Fatal("failed to start PPTP server: %v", err)
 		}
-		go pptps.Run()
+		go pptps.Run(ctx)
 	}
 	s, err := server.New(fmt.Sprintf(":%d", *port), net, &cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	s.Run()
+	s.Run(ctx)
 }

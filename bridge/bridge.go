@@ -2,17 +2,18 @@
 package bridge
 
 import (
-	"sync"
+	"context"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/fragglet/ipxbox/ipx"
 )
 
-func copyPackets(in ipx.ReadCloser, out ipx.WriteCloser) {
+func copyPackets(ctx context.Context, in ipx.ReadCloser, out ipx.WriteCloser) error {
 	localAddresses := map[ipx.Addr]bool{}
 	for {
-		packet, err := in.ReadPacket()
+		packet, err := in.ReadPacket(ctx)
 		if err != nil {
-			break
+			return err
 		}
 
 		// Remember every address we see from the input device, and
@@ -23,25 +24,22 @@ func copyPackets(in ipx.ReadCloser, out ipx.WriteCloser) {
 		}
 		out.WritePacket(packet)
 	}
-	in.Close()
-	out.Close()
 }
 
 // Run implements an IPX bridge, copying IPX packets from in1 to out2 and from
 // in2 to out1. Copying will stop if an error occurs (eg. if one of the inputs
 // is closed) and all the devices will be closed.
-func Run(in1 ipx.ReadCloser, out1 ipx.WriteCloser, in2 ipx.ReadCloser, out2 ipx.WriteCloser) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		copyPackets(in1, out2)
-		in2.Close()
-		wg.Done()
-	}()
-	go func() {
-		copyPackets(in2, out1)
-		in1.Close()
-		wg.Done()
-	}()
-	wg.Wait()
+func Run(ctx context.Context, in1 ipx.ReadCloser, out1 ipx.WriteCloser, in2 ipx.ReadCloser, out2 ipx.WriteCloser) {
+	eg, egctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return copyPackets(egctx, in1, out2)
+	})
+	eg.Go(func() error {
+		return copyPackets(egctx, in2, out1)
+	})
+	eg.Wait()
+	in1.Close()
+	out1.Close()
+	in2.Close()
+	out2.Close()
 }

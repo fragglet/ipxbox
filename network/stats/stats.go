@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -48,8 +49,8 @@ type node struct {
 	stats Statistics
 }
 
-func (n *node) ReadPacket() (*ipx.Packet, error) {
-	packet, err := n.inner.ReadPacket()
+func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	packet, err := n.inner.ReadPacket(ctx)
 	if err != nil {
 		return nil, err
 	}

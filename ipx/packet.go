@@ -1,6 +1,7 @@
 package ipx
 
 import (
+	"context"
 	"encoding"
 	"io"
 )
@@ -15,7 +16,7 @@ var (
 type Reader interface {
 	// ReadPacket returns an IPX packet read from this source or an
 	// error. If no packet is available yet it will block.
-	ReadPacket() (*Packet, error)
+	ReadPacket(context.Context) (*Packet, error)
 }
 
 // Writer defines a common interface implemented by things to which
@@ -65,4 +66,3 @@ func (p *Packet) UnmarshalBinary(packet []byte) error {
 	p.Payload = append([]byte{}, packet[HeaderLength:]...)
 	return nil
 }
-
