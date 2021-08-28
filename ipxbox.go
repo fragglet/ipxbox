@@ -167,6 +167,7 @@ func main() {
 
 		p := phys.NewPhys(stream, framer)
 		tap := tappableLayer.NewTap()
+		go p.Run()
 		go bridge.Run(ctx, tap, tap, p, p)
 		if *enableIpxpkt {
 			r := ipxpkt.NewRouter(net.NewNode())

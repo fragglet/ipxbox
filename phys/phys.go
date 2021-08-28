@@ -10,8 +10,14 @@ import (
 	"sync"
 
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/network/pipe"
+
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+)
+
+const (
+	numBufferedPackets = 8
 )
 
 var (
@@ -32,12 +38,14 @@ type DuplexEthernetStream interface {
 type Phys struct {
 	stream DuplexEthernetStream
 	ps     *gopacket.PacketSource
+	rxpipe ipx.ReadWriteCloser
 	framer Framer
 	nonIPX *nonIPX
 	mu     sync.Mutex
 }
 
 func (p *Phys) Close() error {
+	p.rxpipe.Close()
 	p.mu.Lock()
 	if p.nonIPX != nil {
 		p.nonIPX.Close()
@@ -47,23 +55,19 @@ func (p *Phys) Close() error {
 	return nil
 }
 
-// ReadPacket implements the ipx.Reader interface, and will block until an
-// IPX packet is read from the physical interface.
-func (p *Phys) ReadPacket(_ context.Context) (*ipx.Packet, error) {
-	// TODO: Move to a separate goroutine and make this function
-	// cancellable by context.
+func (p *Phys) Run() error {
 	for {
 		pkt, err := p.ps.NextPacket()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		payload, ok := GetIPXPayload(pkt)
 		if ok {
-			result := &ipx.Packet{}
-			if err := result.UnmarshalBinary(payload); err != nil {
-				continue
+			ipxpkt := &ipx.Packet{}
+			if err := ipxpkt.UnmarshalBinary(payload); err != nil {
+				return err
 			}
-			return result, nil
+			p.rxpipe.WritePacket(ipxpkt)
 		} else {
 			p.mu.Lock()
 			if p.nonIPX != nil {
@@ -72,6 +76,12 @@ func (p *Phys) ReadPacket(_ context.Context) (*ipx.Packet, error) {
 			p.mu.Unlock()
 		}
 	}
+}
+
+// ReadPacket implements the ipx.Reader interface, and will block until an
+// IPX packet is read from the physical interface.
+func (p *Phys) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return p.rxpipe.ReadPacket(ctx)
 }
 
 // WritePacket implements the ipx.Writer interface, and will write the
@@ -182,6 +192,7 @@ func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
 		stream: stream,
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
 		framer: framer,
+		rxpipe: pipe.New(numBufferedPackets),
 	}
 }
 
