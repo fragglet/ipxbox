@@ -1,6 +1,5 @@
 // Package ipxswitch contains an implementation of an IPX network that
-// emulates the behavior of an Ethernet hub (but IPX native).
-// TODO: Emulate the behavior of an Ethernet switch.
+// emulates the behavior of an Ethernet switch (but IPX native).
 package ipxswitch
 
 import (
@@ -28,6 +27,7 @@ type Network struct {
 	mu         sync.RWMutex
 	nodesByID  map[int]*node
 	nextNodeID int
+	table      *routingTable
 }
 
 type node struct {
@@ -61,6 +61,7 @@ func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 
 // WritePacket writes a packet into the network from the given node.
 func (n *node) WritePacket(packet *ipx.Packet) error {
+	n.net.table.Record(n.nodeID, &packet.Header.Src)
 	return n.net.forwardPacket(packet, n)
 }
 
@@ -79,11 +80,11 @@ func (n *Network) NewNode() network.Node {
 	n.nextNodeID++
 	n.nodesByID[node.nodeID] = node
 	n.mu.Unlock()
+	n.table.AddPort(node.nodeID)
 	return node
 }
 
-// forwardPacket receives a packet and forwards it on to another node.
-func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
+func (n *Network) broadcastPacket(packet *ipx.Packet, src ipx.Writer) error {
 	nodes := []*node{}
 	n.mu.RLock()
 	for _, node := range n.nodesByID {
@@ -107,9 +108,23 @@ func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
 	return nil
 }
 
+// forwardPacket receives a packet and forwards it on to another node.
+func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
+	destNodeID := n.table.LookupDest(&packet.Header.Dest)
+	if destNodeID == broadcastDest {
+		return n.broadcastPacket(packet, src)
+	}
+	node := n.nodesByID[destNodeID]
+	if node == src {
+		return nil
+	}
+	return node.rxpipe.WritePacket(packet)
+}
+
 // New creates a new Network.
 func New() *Network {
 	return &Network{
 		nodesByID: map[int]*node{},
+		table:     makeRoutingTable(),
 	}
 }
