@@ -8,7 +8,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/fragglet/ipxbox/bridge"
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/network"
@@ -106,7 +105,7 @@ func addQuakeProxies(ctx context.Context, net network.Network) {
 	}
 }
 
-func makeNetwork() (network.Network, *tappable.TappableNetwork) {
+func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	// We build the network up in layers, each layer adding an extra
 	// feature. This approach allows for modularity and separation of
 	// concerns, avoiding the complexity of a big monolithic system.
@@ -126,14 +125,18 @@ func makeNetwork() (network.Network, *tappable.TappableNetwork) {
 	//  5. ReadPacket() by server, and transmit to client.
 	var net network.Network
 	net = ipxswitch.New()
-	tappableLayer := tappable.Wrap(net)
-	net = tappableLayer
+	if *dumpPackets {
+		tappableLayer := tappable.Wrap(net)
+		go printPackets(ctx, tappableLayer.NewTap())
+		net = tappableLayer
+	}
 	if !*allowNetBIOS {
 		net = filter.Wrap(net)
 	}
+	uplinkable := net
 	net = addressable.Wrap(net)
 	net = stats.Wrap(net)
-	return net, tappableLayer
+	return net, uplinkable
 }
 
 func main() {
@@ -154,7 +157,7 @@ func main() {
 		}
 	}
 
-	net, tappableLayer := makeNetwork()
+	net, uplinkable := makeNetwork(ctx)
 
 	stream, err := ethernetStream()
 	if err != nil {
@@ -166,16 +169,13 @@ func main() {
 		}
 
 		p := phys.NewPhys(stream, framer)
-		tap := tappableLayer.NewTap()
+		port := uplinkable.NewNode()
 		go p.Run()
-		go bridge.Run(ctx, tap, tap, p, p)
+		go ipx.DuplexCopyPackets(ctx, p, port)
 		if *enableIpxpkt {
 			r := ipxpkt.NewRouter(net.NewNode())
 			go phys.CopyFrames(r, p.NonIPX())
 		}
-	}
-	if *dumpPackets {
-		go printPackets(ctx, tappableLayer.NewTap())
 	}
 	addQuakeProxies(ctx, net)
 	if *enablePPTP {
