@@ -21,8 +21,7 @@ const (
 var (
 	_ = (network.Network)(&TappableNetwork{})
 	_ = (network.Node)(&node{})
-	// TODO: Change taps to be read-only.
-	_ = (ipx.ReadWriteCloser)(&tap{})
+	_ = (ipx.ReadCloser)(&tap{})
 )
 
 type TappableNetwork struct {
@@ -39,29 +38,16 @@ func (n *TappableNetwork) NewNode() network.Node {
 	}
 }
 
-func (n *TappableNetwork) NewTap() ipx.ReadWriteCloser {
+func (n *TappableNetwork) NewTap() ipx.ReadCloser {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	tap := &tap{
 		net:    n,
-		node:   n.inner.NewNode(),
 		rxpipe: pipe.New(numBufferedPackets),
 		tapID:  n.nextTapID,
 	}
 	n.nextTapID++
 	n.taps[tap.tapID] = tap
-	// We create an inner node for the tap, but just so that we can
-	// inject packets via WritePacket(). Any delivered packets just
-	// get read and discarded.
-	ctx := context.Background()
-	go func() {
-		for {
-			_, err := tap.node.ReadPacket(ctx)
-			if err != nil {
-				break
-			}
-		}
-	}()
 	return tap
 }
 
@@ -102,7 +88,6 @@ func (n *node) GetProperty(x interface{}) bool {
 }
 
 type tap struct {
-	node   network.Node
 	rxpipe ipx.ReadWriteCloser
 	net    *TappableNetwork
 	tapID  int
@@ -112,14 +97,9 @@ func (t *tap) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	return t.rxpipe.ReadPacket(ctx)
 }
 
-func (t *tap) WritePacket(packet *ipx.Packet) error {
-	return t.node.WritePacket(packet)
-}
-
 func (t *tap) Close() error {
 	t.net.deleteTap(t.tapID)
-	t.rxpipe.Close()
-	return t.node.Close()
+	return t.rxpipe.Close()
 }
 
 // Wrap creates a TappableNetwork that wraps another network but also allows
