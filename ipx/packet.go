@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding"
 	"io"
+
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -37,9 +39,13 @@ type WriteCloser interface {
 	io.Closer
 }
 
-type ReadWriteCloser interface {
+type ReadWriter interface {
 	Reader
 	Writer
+}
+
+type ReadWriteCloser interface {
+	ReadWriter
 	io.Closer
 }
 
@@ -65,4 +71,27 @@ func (p *Packet) UnmarshalBinary(packet []byte) error {
 	}
 	p.Payload = append([]byte{}, packet[HeaderLength:]...)
 	return nil
+}
+
+// CopyPackets copies packets from in to out until an error occurs whil
+// reading or the context is cancelled.
+func CopyPackets(ctx context.Context, in Reader, out Writer) error {
+	for {
+		packet, err := in.ReadPacket(ctx)
+		if err != nil {
+			return err
+		}
+		out.WritePacket(packet)
+	}
+}
+
+func DuplexCopyPackets(ctx context.Context, x, y ReadWriter) error {
+	eg, egctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return CopyPackets(egctx, x, y)
+	})
+	eg.Go(func() error {
+		return CopyPackets(egctx, y, x)
+	})
+	return eg.Wait()
 }
