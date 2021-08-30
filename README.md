@@ -6,7 +6,8 @@ Features:
 
 * TUN/TAP and libpcap integration that allows the server to be bridged to a
 real, physical network. This allows (emulated) dosbox users to play alongside
-users on real DOS machines.
+users on real DOS machines. (See [BRIDGE-HOWTO](BRIDGE-HOWTO.md) for more
+information).
 
 * Built-in PPTP server that allows Windows 9x users to connect over the
 Internet  using the VPN software that shipped with the operating system.
