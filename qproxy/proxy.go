@@ -35,6 +35,7 @@ type Config struct {
 
 type connection struct {
 	p             *Proxy
+	rs reliableSharder
 	ipxAddr       *ipx.HeaderAddr
 	conn          *net.UDPConn
 	lastRXTime    time.Time
@@ -99,14 +100,14 @@ func (c *connection) sendToDownstreamSocket(payload []byte, socket uint16) error
 	})
 }
 
-// sendDownstream forwards the given packet to the client, sending to the
+// sendToDownstream forwards the given packet to the client, sending to the
 // client's data socket.
-func (c *connection) sendDownstream(payload []byte) error {
+func (c *connection) sendToDownstream(payload []byte) error {
 	return c.sendToDownstreamSocket(payload, c.ipxSocket)
 }
 
-// sendUpstream forwards the given packet to the UDP port of the server.
-func (c *connection) sendUpstream(payload []byte) error {
+// sendToUpstream forwards the given packet to the UDP port of the server.
+func (c *connection) sendToUpstream(payload []byte) error {
 	if c.connectedPort < 0 {
 		return nil
 	}
@@ -142,6 +143,11 @@ func (c *connection) receivePackets() {
 			c.handleAccept(buf[:n], &c.p.address)
 		case c.connectedPort:
 			socket = uint16(c.ipxSocket)
+			eaten, err := c.rs.receiveFromUpstream(buf[:n])
+			if err != nil || eaten {
+				// Processed by sharder.
+				continue
+			}
 		default:
 			continue
 		}
@@ -173,6 +179,7 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 		connectedPort: -1,
 		ipxSocket:     connectedIPXSocket,
 	}
+	c.rs.init(c.sendToUpstream, c.sendToDownstream)
 	p.conns[*ipxAddr] = c
 	go c.receivePackets()
 	return c, nil
@@ -232,7 +239,17 @@ func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 		return
 	}
 	c.lastRXTime = time.Now()
-	if err := c.sendUpstream(packet.Payload[quakeHeaderBytes:]); err != nil {
+	msg := packet.Payload[quakeHeaderBytes:]
+	eaten, err := c.rs.receiveFromDownstream(msg)
+	if err != nil {
+		log.Printf("error processing packet from downstream: %v", err)
+		p.closeConnection(&packet.Header.Src)
+	}
+	if eaten {
+		// Handled by reliable sharder code.
+		return
+	}
+	if err := c.sendToUpstream(msg); err != nil {
 		log.Printf("failed to forward IPX packet to UDP server: %v", err)
 		p.closeConnection(&packet.Header.Src)
 	}

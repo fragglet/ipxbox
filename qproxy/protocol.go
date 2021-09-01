@@ -148,9 +148,9 @@ func (s *reliableSharder) sendAck() error {
 	return err
 }
 
-// receiveUpstream processes a packet received from the upstream
+// receiveFromUpstream processes a packet received from the upstream
 // Quake server and returns true, nil if the packet was handled.
-func (s *reliableSharder) receiveUpstream(msg []byte) (bool, error) {
+func (s *reliableSharder) receiveFromUpstream(msg []byte) (bool, error) {
 	flags := binary.BigEndian.Uint16(msg[0:2])
 	if (flags & flagUnreliable) != 0 {
 		return false, nil
@@ -187,9 +187,9 @@ func (s *reliableSharder) receiveUpstream(msg []byte) (bool, error) {
 	return true, nil
 }
 
-// receiveDownstream processes a packet received from the downstream
+// receiveFromDownstream processes a packet received from the downstream
 // Quake client and returns true, nil if the packet was handled.
-func (s *reliableSharder) receiveDownstream(msg []byte) (bool, error) {
+func (s *reliableSharder) receiveFromDownstream(msg []byte) (bool, error) {
 	flags := binary.BigEndian.Uint16(msg[0:2])
 	if (flags & flagUnreliable) != 0 {
 		return false, nil
