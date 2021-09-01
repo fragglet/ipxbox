@@ -54,6 +54,7 @@ func (c *connection) handleAccept(packet []byte, serverAddr *net.UDPAddr) {
 	if packet[4] != ccRepAccept {
 		return
 	}
+	c.rs.init(c.sendToUpstream, c.sendToDownstream)
 	// We have a legitimate looking CCREP_ACCEPT packet.
 	// The server has indicated the port number assigned for this
 	// connection as part of the packet.

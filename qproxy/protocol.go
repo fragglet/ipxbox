@@ -227,4 +227,9 @@ func (s *reliableSharder) init(txUpstream, txDownstream func([]byte) error) {
 	s.txqueue = []byte{}
 	s.txUpstream = txUpstream
 	s.txDownstream = txDownstream
+	s.state = stateReceiving
+	s.rxseq = 0
+	s.rxack = 0
+	s.txseq = 0
+	s.txack = 0
 }
