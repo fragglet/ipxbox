@@ -33,9 +33,13 @@ type Config struct {
 	IdleTimeout time.Duration
 }
 
+func debug(fmt string, args ...interface{}) {
+	//log.Printf(fmt, args...)
+}
+
 type connection struct {
 	p             *Proxy
-	rs reliableSharder
+	rs            reliableSharder
 	ipxAddr       *ipx.HeaderAddr
 	conn          *net.UDPConn
 	lastRXTime    time.Time
@@ -264,6 +268,7 @@ func (p *Proxy) garbageCollect() {
 		expiredConns := []ipx.HeaderAddr{}
 		for addr, c := range p.conns {
 			if now.Sub(c.lastRXTime) > p.config.IdleTimeout {
+				debug("timeout for %s: idle %s", c.conn.RemoteAddr(), now.Sub(c.lastRXTime))
 				expiredConns = append(expiredConns, addr)
 			}
 		}

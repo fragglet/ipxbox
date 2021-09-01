@@ -83,6 +83,7 @@ type reliableSharder struct {
 
 func (s *reliableSharder) stateTransition(from, to state) {
 	if s.state == from {
+		debug("state %d -> %d", from, to)
 		s.state = to
 	}
 }
@@ -92,6 +93,7 @@ func (s *reliableSharder) sendUpstream(rm *reliableMessage) error {
 	if err != nil {
 		return err
 	}
+	debug("send to upstream: seq=%d, len=%d", rm.Sequence, len(data))
 	return s.txUpstream(data)
 }
 
@@ -100,6 +102,7 @@ func (s *reliableSharder) sendDownstream(rm *reliableMessage) error {
 	if err != nil {
 		return err
 	}
+	debug("send to downstream: seq=%d, len=%d", rm.Sequence, len(data))
 	// TODO: Save and retransmit after timeout
 	return s.txDownstream(data)
 }
@@ -163,6 +166,7 @@ func (s *reliableSharder) receiveFromUpstream(msg []byte) (bool, error) {
 	if err := rm.UnmarshalBinary(msg); err != nil {
 		return false, err
 	}
+	debug("from upstream: flags=%d seq=%d, len=%d", rm.Flags, rm.Sequence, len(msg))
 	// We have received a reliable data fragment from upstream.
 	if rm.Sequence == s.rxseq {
 		s.stateTransition(stateEOMAcked, stateReceiving)
@@ -202,6 +206,7 @@ func (s *reliableSharder) receiveFromDownstream(msg []byte) (bool, error) {
 	if err := rm.UnmarshalBinary(msg); err != nil {
 		return false, err
 	}
+	debug("from downstream: flags=%d seq=%d, len=%d", rm.Flags, rm.Sequence, len(msg))
 
 	// We have received an ack from downstream.
 	if rm.Sequence == s.txack {
