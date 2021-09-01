@@ -118,7 +118,7 @@ func (c *connection) sendUpstream(payload []byte) error {
 }
 
 func (c *connection) receivePackets() {
-	var buf [1500]byte
+	var buf [9000]byte
 	for {
 		n, addr, err := c.conn.ReadFromUDP(buf[:])
 		switch {
