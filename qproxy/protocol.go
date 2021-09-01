@@ -142,13 +142,13 @@ func (s *reliableSharder) sendAck() error {
 	}
 	err := s.sendUpstream(&reliableMessage{
 		Flags:    flagAck,
-		Sequence: s.rxseq,
+		Sequence: s.rxseq - 1,
 	})
 	s.rxack = s.rxseq
 	return err
 }
 
-// receiveDownstream processes a packet received from the upstream
+// receiveUpstream processes a packet received from the upstream
 // Quake server and returns true, nil if the packet was handled.
 func (s *reliableSharder) receiveUpstream(msg []byte) (bool, error) {
 	flags := binary.BigEndian.Uint16(msg[0:2])
