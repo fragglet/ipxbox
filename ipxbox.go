@@ -181,7 +181,7 @@ func main() {
 	if *enablePPTP {
 		pptps, err := pptp.NewServer(net)
 		if err != nil {
-			log.Fatal("failed to start PPTP server: %v", err)
+			log.Fatalf("failed to start PPTP server: %v", err)
 		}
 		go pptps.Run(ctx)
 	}
