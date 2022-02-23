@@ -115,7 +115,7 @@ func (c *Connection) startPPPSession(ctx context.Context, sendCallID uint16) {
 	}
 	addr := c.conn.RemoteAddr().(*net.TCPAddr)
 	var err error
-	gre, err := startGRESession(addr.IP, sendCallID, c.callID)
+	gre, err := c.s.greServer.startSession(addr.IP, sendCallID, c.callID)
 	if err != nil {
 		// TODO: Send back error message? Log error?
 		c.conn.Close()
@@ -238,11 +238,13 @@ type Server struct {
 	listener   *net.TCPListener
 	nextCallID uint16
 	n          network.Network
+	greServer  *greServer
 }
 
 // Run listens for and accepts new connections to the server. It blocks until
 // the server is shut down, so it should be invoked in a dedicated goroutine.
 func (s *Server) Run(ctx context.Context) {
+	go s.greServer.Run()
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -257,19 +259,26 @@ func (s *Server) Run(ctx context.Context) {
 }
 
 func (s *Server) Close() error {
+	s.greServer.Close()
 	return s.listener.Close()
 }
 
 func NewServer(n network.Network) (*Server, error) {
+	gs, err := startGREServer()
+	if err != nil {
+		return nil, err
+	}
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: pptpPort,
 	})
 	if err != nil {
+		gs.Close()
 		return nil, err
 	}
 	return &Server{
 		listener:   listener,
 		nextCallID: 384,
 		n:          n,
+		greServer:  gs,
 	}, nil
 }
