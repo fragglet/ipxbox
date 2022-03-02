@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -22,7 +23,9 @@ import (
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/syslog"
 
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/gopacket/pcapgo"
 	"github.com/songgao/water"
 )
 
@@ -36,7 +39,7 @@ var framers = map[string]phys.Framer{
 var (
 	pcapDevice      = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
 	enableTap       = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
-	dumpPackets     = flag.Bool("dump_packets", false, "Dump packets to stdout.")
+	dumpPackets     = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
 	port            = flag.Int("port", 10000, "UDP port to listen on.")
 	clientTimeout   = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
 	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
@@ -46,29 +49,6 @@ var (
 	quakeServers    = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
 	enablePPTP      = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
-
-func printPackets(ctx context.Context, tap ipx.ReadCloser) {
-	defer tap.Close()
-	for {
-		packet, err := tap.ReadPacket(ctx)
-		if err != nil {
-			break
-		}
-		packetBytes, err := packet.MarshalBinary()
-		if err != nil {
-			fmt.Printf("error marshaling packet: %v", err)
-			return
-		}
-		fmt.Printf("packet:\n")
-		for i, b := range packetBytes {
-			fmt.Printf("%02x ", b)
-			if (i+1)%16 == 0 {
-				fmt.Printf("\n")
-			}
-		}
-		fmt.Printf("\n")
-	}
-}
 
 func ethernetStream() (phys.DuplexEthernetStream, error) {
 	if *enableTap {
@@ -105,6 +85,16 @@ func addQuakeProxies(ctx context.Context, net network.Network) {
 	}
 }
 
+func makePcapWriter() *pcapgo.Writer {
+	f, err := os.Create(*dumpPackets)
+	if err != nil {
+		log.Fatalf("failed to open pcap file for write: %v", err)
+	}
+	w := pcapgo.NewWriter(f)
+	w.WriteFileHeader(1500, layers.LinkTypeEthernet)
+	return w
+}
+
 func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	// We build the network up in layers, each layer adding an extra
 	// feature. This approach allows for modularity and separation of
@@ -125,9 +115,11 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	//  5. ReadPacket() by server, and transmit to client.
 	var net network.Network
 	net = ipxswitch.New()
-	if *dumpPackets {
+	if *dumpPackets != "" {
 		tappableLayer := tappable.Wrap(net)
-		go printPackets(ctx, tappableLayer.NewTap())
+		w := makePcapWriter()
+		sink := phys.NewPcapgoSink(w, phys.FramerEthernetII)
+		go ipx.CopyPackets(ctx, tappableLayer.NewTap(), sink)
 		net = tappableLayer
 	}
 	if !*allowNetBIOS {
