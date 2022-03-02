@@ -8,12 +8,14 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network/pipe"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcapgo"
 )
 
 const (
@@ -23,6 +25,9 @@ const (
 var (
 	_ = (ipx.WriteCloser)(&Sink{})
 	_ = (ipx.ReadWriteCloser)(&Phys{})
+	_ = (DuplexEthernetStream)(&nonIPX{})
+	_ = (PacketDataSink)(&pcapgoSinkShim{})
+	_ = (PcapgoDataSink)(&pcapgo.Writer{})
 )
 
 // PacketDataSink is the complement to gopacket.PacketDataSource: the
@@ -33,6 +38,12 @@ type PacketDataSink interface {
 	Close()
 }
 
+// PcapgoDataSink is the packet writing interface implemented by the
+// gopacket/pcapgo writer types.
+type PcapgoDataSink interface {
+	WritePacket(ci gopacket.CaptureInfo, data []byte) error
+}
+
 // DuplexEthernetStream extends gopacket.PacketDataSource to an interface
 // where packets can be both read and written.
 type DuplexEthernetStream interface {
@@ -40,8 +51,22 @@ type DuplexEthernetStream interface {
 	PacketDataSink
 }
 
-// Sink implements the Writer interface to allow IPX packets to be written to
-// a physical network interface.
+type pcapgoSinkShim struct {
+	pds PcapgoDataSink
+}
+
+func (s *pcapgoSinkShim) WritePacketData(data []byte) error {
+	return s.pds.WritePacket(gopacket.CaptureInfo{
+		Timestamp:     time.Now(),
+		CaptureLength: len(data),
+		Length:        len(data),
+	}, data)
+}
+
+func (s *pcapgoSinkShim) Close() {}
+
+// Sink is an implementation of ipx.WriteCloser that frames IPX packets and
+// writes them to a physical network interface.
 type Sink struct {
 	pds    PacketDataSink
 	framer Framer
@@ -66,6 +91,8 @@ func (s *Sink) Close() error {
 	return nil
 }
 
+// NewSink returns an implementation of ipx.WriteCloser that writes packets
+// to the given gopacket data sink.
 func NewSink(pds PacketDataSink, framer Framer) *Sink {
 	return &Sink{
 		pds:    pds,
@@ -73,8 +100,14 @@ func NewSink(pds PacketDataSink, framer Framer) *Sink {
 	}
 }
 
-// Phys implements the Reader and Writer interfaces to allow IPX packets to
-// be read from and written to a physical network interface.
+// NewPcapgoSink returns an implementation of ipx.WriteCloser that writes
+// packets to the given pcapgo Writer.
+func NewPcapgoSink(pds PcapgoDataSink, framer Framer) *Sink {
+	return NewSink(&pcapgoSinkShim{pds}, framer)
+}
+
+// Phys is an implementation of ipx.ReadWriteCloser that reads and writes
+// IPX packets from a physical network interface.
 type Phys struct {
 	*Sink
 	ps     *gopacket.PacketSource
