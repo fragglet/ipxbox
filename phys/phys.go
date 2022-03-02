@@ -21,6 +21,7 @@ const (
 )
 
 var (
+	_ = (ipx.WriteCloser)(&Sink{})
 	_ = (ipx.ReadWriteCloser)(&Phys{})
 )
 
@@ -60,8 +61,9 @@ func (s *Sink) WritePacket(packet *ipx.Packet) error {
 	return s.pds.WritePacketData(buf.Bytes())
 }
 
-func (s *Sink) Close() {
+func (s *Sink) Close() error {
 	s.pds.Close()
+	return nil
 }
 
 func NewSink(pds PacketDataSink, framer Framer) *Sink {
