@@ -24,22 +24,59 @@ var (
 	_ = (ipx.ReadWriteCloser)(&Phys{})
 )
 
+// PacketDataSink is the complement to gopacket.PacketDataSource: the
+// WritePacketData method implemented by gopacket's pcap.Handle that allows
+// packets to be written to an output.
+type PacketDataSink interface {
+	WritePacketData([]byte) error
+	Close()
+}
+
 // DuplexEthernetStream extends gopacket.PacketDataSource to an interface
 // where packets can be both read and written.
 type DuplexEthernetStream interface {
 	gopacket.PacketDataSource
+	PacketDataSink
+}
 
-	Close()
-	WritePacketData([]byte) error
+// Sink implements the Writer interface to allow IPX packets to be written to
+// a physical network interface.
+type Sink struct {
+	pds    PacketDataSink
+	framer Framer
+}
+
+// WritePacket implements the ipx.Writer interface, and will write the
+// given IPX packet to the physical interface.
+func (s *Sink) WritePacket(packet *ipx.Packet) error {
+	dest := net.HardwareAddr(packet.Header.Dest.Addr[:])
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	layers, err := s.framer.Frame(dest, packet)
+	if err != nil {
+		return err
+	}
+	gopacket.SerializeLayers(buf, opts, layers...)
+	return s.pds.WritePacketData(buf.Bytes())
+}
+
+func (s *Sink) Close() {
+	s.pds.Close()
+}
+
+func NewSink(pds PacketDataSink, framer Framer) *Sink {
+	return &Sink{
+		pds:    pds,
+		framer: framer,
+	}
 }
 
 // Phys implements the Reader and Writer interfaces to allow IPX packets to
 // be read from and written to a physical network interface.
 type Phys struct {
-	stream DuplexEthernetStream
+	*Sink
 	ps     *gopacket.PacketSource
 	rxpipe ipx.ReadWriteCloser
-	framer Framer
 	nonIPX *nonIPX
 	mu     sync.Mutex
 }
@@ -51,7 +88,7 @@ func (p *Phys) Close() error {
 		p.nonIPX.Close()
 	}
 	p.mu.Unlock()
-	p.stream.Close()
+	p.Sink.Close()
 	return nil
 }
 
@@ -82,23 +119,6 @@ func (p *Phys) Run() error {
 // IPX packet is read from the physical interface.
 func (p *Phys) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	return p.rxpipe.ReadPacket(ctx)
-}
-
-// WritePacket implements the ipx.Writer interface, and will write the
-// given IPX packet to the physical interface.
-func (p *Phys) WritePacket(packet *ipx.Packet) error {
-	dest := net.HardwareAddr(packet.Header.Dest.Addr[:])
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{}
-	layers, err := p.framer.Frame(dest, packet)
-	if err != nil {
-		return err
-	}
-	gopacket.SerializeLayers(buf, opts, layers...)
-	if err := p.stream.WritePacketData(buf.Bytes()); err != nil {
-		return err
-	}
-	return nil
 }
 
 // NonIPX returns a DuplexEthernetStream from which all non-IPX Ethernet frames
@@ -176,8 +196,8 @@ func (ni *nonIPX) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
 }
 
 func (ni *nonIPX) WritePacketData(frame []byte) error {
-	// Write is just a passthrough to the underlying stream.
-	return ni.phys.stream.WritePacketData(frame)
+	// Write is just a passthrough to the underlying sink.
+	return ni.phys.Sink.pds.WritePacketData(frame)
 }
 
 func (ni *nonIPX) Close() {
@@ -189,9 +209,8 @@ func (ni *nonIPX) Close() {
 
 func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
 	return &Phys{
-		stream: stream,
+		Sink:   NewSink(stream, framer),
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
-		framer: framer,
 		rxpipe: pipe.New(numBufferedPackets),
 	}
 }
