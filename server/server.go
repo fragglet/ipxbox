@@ -11,6 +11,7 @@ import (
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/pipe"
 	"github.com/fragglet/ipxbox/network/stats"
 )
 
@@ -38,6 +39,7 @@ type Config struct {
 // client represents a client that is connected to an IPX server.
 type client struct {
 	s               *Server
+	rxpipe          ipx.ReadWriteCloser
 	addr            *net.UDPAddr
 	node            network.Node
 	lastReceiveTime time.Time
@@ -45,7 +47,7 @@ type client struct {
 }
 
 func (c *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
-	return nil, nil // TODO
+	return c.rxpipe.ReadPacket(ctx)
 }
 
 func (c *client) WritePacket(packet *ipx.Packet) error {
@@ -108,21 +110,8 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 // to the connected UDP client. The function will only return when the client's
 // network node is Close()d.
 func (s *Server) runClient(ctx context.Context, c *client) {
-	for {
-		packet, err := c.node.ReadPacket(ctx)
-		switch {
-		case err == nil:
-			// Proceed with transmit below.
-		case err == io.ErrClosedPipe:
-			// Normal client shutdown/timeout.
-			return
-		default:
-			s.log("unexpected error reading packet for transmit: %v", err)
-			return
-		}
-		if err := c.WritePacket(packet); err != nil {
-			s.log("error forwarding packet: %v", err)
-		}
+	if err := ipx.DuplexCopyPackets(ctx, c, c.node); err != nil {
+		s.log("client %s: error while copying packets: %v", c.addr.String(), err)
 	}
 }
 
@@ -141,6 +130,7 @@ func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UD
 		now := time.Now()
 		c = &client{
 			s:               s,
+			rxpipe:          pipe.New(1),
 			addr:            addr,
 			lastReceiveTime: now,
 			node:            s.net.NewNode(),
@@ -199,7 +189,7 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 
 	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
-	srcClient.node.WritePacket(packet)
+	srcClient.rxpipe.WritePacket(packet)
 }
 
 // sendPing transmits a ping packet to the given client. The DOSbox IPX client
@@ -265,6 +255,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 				c.lastReceiveTime, stats.Summary(c.node))
 			delete(s.clients, c.addr.String())
 			c.node.Close()
+			c.rxpipe.Close()
 		}
 
 		if keepaliveTime.Before(nextCheckTime) {
@@ -316,6 +307,7 @@ func (s *Server) Close() error {
 	defer s.mu.Unlock()
 	for _, client := range s.clients {
 		client.node.Close()
+		client.rxpipe.Close()
 	}
 	return s.socket.Close()
 }
