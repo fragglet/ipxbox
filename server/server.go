@@ -14,6 +14,10 @@ import (
 	"github.com/fragglet/ipxbox/network/stats"
 )
 
+var (
+	_ = (ipx.ReadWriteCloser)(&client{})
+)
+
 // Config contains configuration parameters for an IPX server.
 type Config struct {
 	// Clients time out if nothing is received for this amount of time.
@@ -33,10 +37,28 @@ type Config struct {
 
 // client represents a client that is connected to an IPX server.
 type client struct {
+	s               *Server
 	addr            *net.UDPAddr
 	node            network.Node
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
+}
+
+func (c *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	return nil, nil // TODO
+}
+
+func (c *client) WritePacket(packet *ipx.Packet) error {
+	packetBytes, err := packet.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	_, err = c.s.socket.WriteToUDP(packetBytes, c.addr)
+	return err
+}
+
+func (c *client) Close() error {
+	return nil // TODO
 }
 
 // Server is the top-level struct representing an IPX server that listens
@@ -98,12 +120,9 @@ func (s *Server) runClient(ctx context.Context, c *client) {
 			s.log("unexpected error reading packet for transmit: %v", err)
 			return
 		}
-		packetBytes, err := packet.MarshalBinary()
-		if err != nil {
-			s.log("failed to marshal packet: %v", err)
-			continue
+		if err := c.WritePacket(packet); err != nil {
+			s.log("error forwarding packet: %v", err)
 		}
-		s.socket.WriteToUDP(packetBytes, c.addr)
 	}
 }
 
@@ -121,6 +140,7 @@ func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UD
 	if !ok {
 		now := time.Now()
 		c = &client{
+			s:               s,
 			addr:            addr,
 			lastReceiveTime: now,
 			node:            s.net.NewNode(),
