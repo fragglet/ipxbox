@@ -124,6 +124,7 @@ func (s *Server) log(format string, args ...interface{}) {
 // newClient processes a registration packet, adding a new client if necessary.
 func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UDPAddr) {
 	addrStr := addr.String()
+	s.mu.Lock()
 	c, ok := s.clients[addrStr]
 
 	if !ok {
@@ -142,6 +143,7 @@ func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UD
 		// TODO: Use cancellable context for client disconnect?
 		go s.runClient(ctx, c)
 	}
+	s.mu.Unlock()
 
 	// Send a reply back to the client
 	reply := &ipx.Header{
@@ -182,7 +184,9 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 
 	// Find which client sent it; it must be a registered client sending
 	// from their own IPX address.
+	s.mu.Lock()
 	srcClient, ok := s.clients[addr.String()]
+	s.mu.Unlock()
 	if !ok {
 		return
 	}
@@ -217,6 +221,16 @@ func (s *Server) sendPing(c *client) {
 	}
 }
 
+func (s *Server) allClients() []*client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := []*client{}
+	for _, c := range s.clients {
+		result = append(result, c)
+	}
+	return result
+}
+
 // checkClientTimeouts checks all clients that are connected to the server and
 // handles idle clients to which we have no sent data or from which we have not
 // received data recently. This function should be called regularly; it returns
@@ -228,7 +242,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 	// might connect in the mean time.
 	nextCheckTime := now.Add(10 * time.Second)
 
-	for addrStr, c := range s.clients {
+	for _, c := range s.allClients() {
 		// Nothing sent in a while? Send a keepalive.
 		// This is important because some types of game use a
 		// client/server type arrangement where the server does not
@@ -251,9 +265,11 @@ func (s *Server) checkClientTimeouts() time.Time {
 		if now.After(timeoutTime) {
 			s.log(("client %s (IPX address %s) timed out: " +
 				"nothing received since %s. %s"),
-				addrStr, network.NodeAddress(c.node),
+				c.addr.String(), network.NodeAddress(c.node),
 				c.lastReceiveTime, stats.Summary(c.node))
+			s.mu.Lock()
 			delete(s.clients, c.addr.String())
+			s.mu.Unlock()
 			c.node.Close()
 			c.rxpipe.Close()
 		}
@@ -303,9 +319,7 @@ func (s *Server) Run(ctx context.Context) {
 
 // Close closes the socket associated with the server to shut it down.
 func (s *Server) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, client := range s.clients {
+	for _, client := range s.allClients() {
 		client.node.Close()
 		client.rxpipe.Close()
 	}
