@@ -60,7 +60,11 @@ func (c *client) WritePacket(packet *ipx.Packet) error {
 }
 
 func (c *client) Close() error {
-	return nil // TODO
+	c.s.mu.Lock()
+	delete(c.s.clients, c.addr.String())
+	c.s.mu.Unlock()
+	c.rxpipe.Close()
+	return c.node.Close()
 }
 
 // Server is the top-level struct representing an IPX server that listens
@@ -267,11 +271,7 @@ func (s *Server) checkClientTimeouts() time.Time {
 				"nothing received since %s. %s"),
 				c.addr.String(), network.NodeAddress(c.node),
 				c.lastReceiveTime, stats.Summary(c.node))
-			s.mu.Lock()
-			delete(s.clients, c.addr.String())
-			s.mu.Unlock()
-			c.node.Close()
-			c.rxpipe.Close()
+			c.Close()
 		}
 
 		if keepaliveTime.Before(nextCheckTime) {
@@ -320,8 +320,7 @@ func (s *Server) Run(ctx context.Context) {
 // Close closes the socket associated with the server to shut it down.
 func (s *Server) Close() error {
 	for _, client := range s.allClients() {
-		client.node.Close()
-		client.rxpipe.Close()
+		client.Close()
 	}
 	return s.socket.Close()
 }
