@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -17,6 +18,7 @@ import (
 
 var (
 	_ = (ipx.ReadWriteCloser)(&client{})
+	_ = (ipx.ReadWriteCloser)(&DosboxProtocol{})
 )
 
 // Config contains configuration parameters for an IPX server.
@@ -39,9 +41,9 @@ type Config struct {
 // client represents a client that is connected to an IPX server.
 type client struct {
 	s               *Server
+	closed          bool
 	rxpipe          ipx.ReadWriteCloser
 	addr            *net.UDPAddr
-	node            network.Node
 	lastReceiveTime time.Time
 	lastSendTime    time.Time
 }
@@ -61,10 +63,12 @@ func (c *client) WritePacket(packet *ipx.Packet) error {
 
 func (c *client) Close() error {
 	c.s.mu.Lock()
-	delete(c.s.clients, c.addr.String())
-	c.s.mu.Unlock()
-	c.rxpipe.Close()
-	return c.node.Close()
+	defer c.s.mu.Unlock()
+	if !c.closed {
+		delete(c.s.clients, c.addr.String())
+		c.closed = true
+	}
+	return c.rxpipe.Close()
 }
 
 // Server is the top-level struct representing an IPX server that listens
@@ -110,13 +114,85 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 	return s, nil
 }
 
-// runClient continually copies packets from the client's node and sends them
-// to the connected UDP client. The function will only return when the client's
-// network node is Close()d.
-func (s *Server) runClient(ctx context.Context, c *client) {
-	if err := ipx.DuplexCopyPackets(ctx, c, c.node); err != nil {
-		s.log("client %s: error while copying packets: %v", c.addr.String(), err)
+// DosboxProtocol implements the dosbox protocol as a wrapper around an
+// inner ReadWriteCloser that is used to send and receive IPX frames.
+type DosboxProtocol struct {
+	inner    ipx.ReadWriteCloser
+	nodeAddr *ipx.Addr
+}
+
+func (p *DosboxProtocol) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	for {
+		packet, err := p.inner.ReadPacket(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if packet.Header.IsRegistrationPacket() {
+			p.sendRegistrationReply()
+			continue
+		}
+		return packet, nil
 	}
+}
+
+func (p *DosboxProtocol) WritePacket(packet *ipx.Packet) error {
+	return p.inner.WritePacket(packet)
+}
+
+func (p *DosboxProtocol) Close() error {
+	return p.inner.Close()
+}
+
+func (p *DosboxProtocol) sendRegistrationReply() {
+	// Send a reply back to the client
+	p.inner.WritePacket(&ipx.Packet{
+		Header: ipx.Header{
+			Checksum:     0xffff,
+			Length:       30,
+			TransControl: 0,
+			Dest: ipx.HeaderAddr{
+				Network: [4]byte{0, 0, 0, 0},
+				Addr:    *p.nodeAddr,
+				Socket:  2,
+			},
+			Src: ipx.HeaderAddr{
+				Network: [4]byte{0, 0, 0, 1},
+				Addr:    ipx.AddrBroadcast,
+				Socket:  2,
+			},
+		},
+	})
+}
+
+// startClient is invoked as a new goroutine when a new client connects.
+func startClient(ctx context.Context, c *client) error {
+	packet, err := c.ReadPacket(ctx)
+	if err != nil {
+		return err
+	}
+	if !packet.Header.IsRegistrationPacket() {
+		return nil
+	}
+	node := c.s.net.NewNode()
+	nodeAddr := network.NodeAddress(node)
+	defer func() {
+		node.Close()
+		statsString := stats.Summary(node)
+		if statsString != "" {
+			c.s.log("%s (IPX address %s): final statistics: %s",
+				c.addr.String(), nodeAddr.String(), statsString)
+		}
+	}()
+
+	c.s.log("%s: new connection, assigned IPX address %s",
+		c.addr.String(), network.NodeAddress(node))
+	p := &DosboxProtocol{
+		inner:    c,
+		nodeAddr: &nodeAddr,
+	}
+	p.sendRegistrationReply()
+
+	return ipx.DuplexCopyPackets(ctx, p, node)
 }
 
 func (s *Server) log(format string, args ...interface{}) {
@@ -126,51 +202,30 @@ func (s *Server) log(format string, args ...interface{}) {
 }
 
 // newClient processes a registration packet, adding a new client if necessary.
-func (s *Server) newClient(ctx context.Context, header *ipx.Header, addr *net.UDPAddr) {
+func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UDPAddr) *client {
 	addrStr := addr.String()
-	s.mu.Lock()
-	c, ok := s.clients[addrStr]
+	now := time.Now()
+	c := &client{
+		s:               s,
+		rxpipe:          pipe.New(1),
+		addr:            addr,
+		lastReceiveTime: now,
+		lastSendTime:    now,
+	}
+	s.clients[addrStr] = c
 
-	if !ok {
-		now := time.Now()
-		c = &client{
-			s:               s,
-			rxpipe:          pipe.New(1),
-			addr:            addr,
-			lastReceiveTime: now,
-			node:            s.net.NewNode(),
+	go func() {
+		err := startClient(ctx, c)
+
+		if errors.Is(err, io.ErrClosedPipe) {
+			err = nil
 		}
-
-		s.clients[addrStr] = c
-		s.log("new connection from %s, assigned IPX address %s",
-			addrStr, network.NodeAddress(c.node))
-		// TODO: Use cancellable context for client disconnect?
-		go s.runClient(ctx, c)
-	}
-	s.mu.Unlock()
-
-	// Send a reply back to the client
-	reply := &ipx.Header{
-		Checksum:     0xffff,
-		Length:       30,
-		TransControl: 0,
-		Dest: ipx.HeaderAddr{
-			Network: [4]byte{0, 0, 0, 0},
-			Addr:    network.NodeAddress(c.node),
-			Socket:  2,
-		},
-		Src: ipx.HeaderAddr{
-			Network: [4]byte{0, 0, 0, 1},
-			Addr:    ipx.AddrBroadcast,
-			Socket:  2,
-		},
-	}
-
-	c.lastSendTime = time.Now()
-	encodedReply, err := reply.MarshalBinary()
-	if err == nil {
-		s.socket.WriteToUDP(encodedReply, c.addr)
-	}
+		if err != nil {
+			s.log("client %s terminated abnormally: %v", addrStr, err)
+		}
+		c.Close()
+	}()
+	return c
 }
 
 // processPacket decodes and processes a received UDP packet, sending responses
@@ -181,21 +236,15 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 		return
 	}
 
-	if packet.Header.IsRegistrationPacket() {
-		s.newClient(ctx, &packet.Header, addr)
-		return
-	}
-
-	// Find which client sent it; it must be a registered client sending
-	// from their own IPX address.
+	// Find which client sent it, and forward to receive queue.
+	// If we don't find a client matching this address, start a new one.
 	s.mu.Lock()
 	srcClient, ok := s.clients[addr.String()]
-	s.mu.Unlock()
 	if !ok {
-		return
+		srcClient = s.newClient(ctx, packet, addr)
 	}
+	s.mu.Unlock()
 
-	// Deliver packet to the network.
 	srcClient.lastReceiveTime = time.Now()
 	srcClient.rxpipe.WritePacket(packet)
 }
@@ -267,10 +316,9 @@ func (s *Server) checkClientTimeouts() time.Time {
 		// Nothing received in a long time? Time out the connection.
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
-			s.log(("client %s (IPX address %s) timed out: " +
-				"nothing received since %s. %s"),
-				c.addr.String(), network.NodeAddress(c.node),
-				c.lastReceiveTime, stats.Summary(c.node))
+			s.log(("client %s timed out: nothing received " +
+				"since %s."),
+				c.addr.String(), c.lastReceiveTime)
 			c.Close()
 		}
 
