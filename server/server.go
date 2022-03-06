@@ -1,4 +1,5 @@
-// Package server implements the server side of the DOSBox IPX protocol.
+// Package server implements a server that sends and receives IPX frames
+// inside UDP packets.
 package server
 
 import (
@@ -11,31 +12,36 @@ import (
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
-	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/pipe"
-	"github.com/fragglet/ipxbox/network/stats"
-	"github.com/fragglet/ipxbox/server/dosbox"
 )
 
 var (
 	_ = (ipx.ReadWriteCloser)(&client{})
+	_ = (io.Closer)(&Server{})
 )
 
 // Config contains configuration parameters for an IPX server.
 type Config struct {
+	// Protocol contains the implementation of the inner protocol
+	// logic.
+	Protocol Protocol
+
 	// Clients time out if nothing is received for this amount of time.
 	ClientTimeout time.Duration
-
-	// Always send at least one packet every few seconds to keep the
-	// UDP connection open. Some NAT networks and firewalls can be very
-	// aggressive about closing off the ability for clients to receive
-	// packets on particular ports if nothing is received for a while.
-	// This controls the time for keepalives.
-	KeepaliveTime time.Duration
 
 	// If not nil, log entries are written as clients connect and
 	// disconnect.
 	Logger *log.Logger
+}
+
+// Protocol implements the inner protocol logic of the server.
+type Protocol interface {
+	// StartClient is invoked each time the server receives packets from
+	// a new address. The method call happens in its own goroutine and
+	// is passed an ipx.ReadWriteCloser that can be used to send and
+	// receive packets to the client. Returning from the method call
+	// closes the connection.
+	StartClient(context.Context, ipx.ReadWriteCloser, net.Addr) error
 }
 
 // client represents a client that is connected to an IPX server.
@@ -73,7 +79,6 @@ func (c *client) Close() error {
 // Server is the top-level struct representing an IPX server that listens
 // on a UDP port.
 type Server struct {
-	net              network.Network
 	mu               sync.Mutex
 	config           *Config
 	socket           *net.UDPConn
@@ -81,17 +86,8 @@ type Server struct {
 	timeoutCheckTime time.Time
 }
 
-var (
-	DefaultConfig = &Config{
-		ClientTimeout: 10 * time.Minute,
-		KeepaliveTime: 5 * time.Second,
-	}
-
-	_ = (io.Closer)(&Server{})
-)
-
 // New creates a new Server, listening on the given address.
-func New(addr string, n network.Network, c *Config) (*Server, error) {
+func New(addr string, c *Config) (*Server, error) {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		return nil, err
@@ -100,45 +96,12 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{
-		net:              n,
+	return &Server{
 		config:           c,
 		socket:           socket,
 		clients:          map[string]*client{},
 		timeoutCheckTime: time.Now().Add(10e9),
-	}
-	return s, nil
-}
-
-// startClient is invoked as a new goroutine when a new client connects.
-// TODO: Move to dosbox protocol package
-func startClient(ctx context.Context, c *client) error {
-	packet, err := c.ReadPacket(ctx)
-	if err != nil {
-		return err
-	}
-	if !packet.Header.IsRegistrationPacket() {
-		return nil
-	}
-	node := c.s.net.NewNode()
-	nodeAddr := network.NodeAddress(node)
-	defer func() {
-		node.Close()
-		statsString := stats.Summary(node)
-		if statsString != "" {
-			c.s.log("%s (IPX address %s): final statistics: %s",
-				c.addr.String(), nodeAddr.String(), statsString)
-		}
-	}()
-
-	c.s.log("%s: new connection, assigned IPX address %s",
-		c.addr.String(), network.NodeAddress(node))
-	p := dosbox.MakeClient(c, &nodeAddr)
-	p.SendRegistrationReply()
-
-	go p.SendKeepalives(ctx, c.s.config.KeepaliveTime)
-
-	return ipx.DuplexCopyPackets(ctx, p, node)
+	}, nil
 }
 
 func (s *Server) log(format string, args ...interface{}) {
@@ -164,7 +127,7 @@ func (s *Server) newClient(ctx context.Context, addr *net.UDPAddr) *client {
 	go func() {
 		subctx, cancel := context.WithCancel(ctx)
 
-		err := startClient(subctx, c)
+		err := s.config.Protocol.StartClient(subctx, c, addr)
 
 		if errors.Is(err, io.ErrClosedPipe) {
 			err = nil

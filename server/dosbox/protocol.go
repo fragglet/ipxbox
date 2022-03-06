@@ -3,18 +3,82 @@ package dosbox
 
 import (
 	"context"
+	"log"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/stats"
+	"github.com/fragglet/ipxbox/server"
 )
 
 var (
+	_ = (server.Protocol)(&Protocol{})
 	_ = (ipx.ReadWriteCloser)(&Client{})
 
 	// Server-initiated pings come from this address.
 	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
 )
+
+type Protocol struct {
+	// A new Node is created in this network each time a new client
+	// is created.
+	Network network.Network
+
+	// Always send at least one packet every few seconds to keep the
+	// UDP connection open. Some NAT networks and firewalls can be very
+	// aggressive about closing off the ability for clients to receive
+	// packets on particular ports if nothing is received for a while.
+	// This controls the time for keepalives.
+	KeepaliveTime time.Duration
+
+	// If not nil, log entries are written as clients connect and
+	// disconnect.
+	Logger *log.Logger
+}
+
+func (p *Protocol) log(format string, args ...interface{}) {
+	if p.Logger != nil {
+		p.Logger.Printf(format, args...)
+	}
+}
+
+// StartClient is invoked as a new goroutine when a new client connects.
+func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, remoteAddr net.Addr) error {
+	packet, err := inner.ReadPacket(ctx)
+	if err != nil {
+		return err
+	}
+	if !packet.Header.IsRegistrationPacket() {
+		return nil
+	}
+	node := p.Network.NewNode()
+	nodeAddr := network.NodeAddress(node)
+	defer func() {
+		node.Close()
+		statsString := stats.Summary(node)
+		if statsString != "" {
+			p.log("%s (IPX address %s): final statistics: %s",
+				remoteAddr.String(), nodeAddr.String(), statsString)
+		}
+	}()
+
+	p.log("%s: new connection, assigned IPX address %s",
+		remoteAddr.String(), network.NodeAddress(node))
+	c := &Client{
+		inner:        inner,
+		nodeAddr:     &nodeAddr,
+		lastRecvTime: time.Now(),
+	}
+
+	c.SendRegistrationReply()
+
+	go c.SendKeepalives(ctx, p.KeepaliveTime)
+
+	return ipx.DuplexCopyPackets(ctx, c, node)
+}
 
 // Client implements the dosbox protocol as a wrapper around an
 // inner ReadWriteCloser that is used to send and receive IPX frames.
@@ -23,13 +87,6 @@ type Client struct {
 	nodeAddr     *ipx.Addr
 	mu           sync.Mutex
 	lastRecvTime time.Time
-}
-
-func MakeClient(inner ipx.ReadWriteCloser, nodeAddr *ipx.Addr) *Client {
-	return &Client{
-		inner:    inner,
-		nodeAddr: nodeAddr,
-	}
 }
 
 func (p *Client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {

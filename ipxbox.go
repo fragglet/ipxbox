@@ -22,6 +22,7 @@ import (
 	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
+	"github.com/fragglet/ipxbox/server/dosbox"
 	"github.com/fragglet/ipxbox/syslog"
 
 	"github.com/google/gopacket/layers"
@@ -137,13 +138,10 @@ func main() {
 
 	ctx := context.Background()
 
-	var cfg server.Config
-	cfg = *server.DefaultConfig
-	cfg.ClientTimeout = *clientTimeout
-
+	var logger *log.Logger
 	if *enableSyslog {
 		var err error
-		cfg.Logger, err = syslog.NewLogger(
+		logger, err = syslog.NewLogger(
 			syslog.LOG_NOTICE|syslog.LOG_DAEMON, 0)
 		if err != nil {
 			log.Fatalf("failed to init syslog: %v", err)
@@ -178,7 +176,16 @@ func main() {
 		}
 		go pptps.Run(ctx)
 	}
-	s, err := server.New(fmt.Sprintf(":%d", *port), net, &cfg)
+
+	s, err := server.New(fmt.Sprintf(":%d", *port), &server.Config{
+		Protocol: &dosbox.Protocol{
+			Logger:        logger,
+			Network:       net,
+			KeepaliveTime: 5 * time.Second,
+		},
+		ClientTimeout: *clientTimeout,
+		Logger:        logger,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
