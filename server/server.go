@@ -147,8 +147,10 @@ func (s *Server) log(format string, args ...interface{}) {
 	}
 }
 
-// newClient processes a registration packet, adding a new client if necessary.
-func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UDPAddr) *client {
+// newClient is invoked when a new client should be started. When called, a
+// packet has been received from the given address but no client matches the
+// address.
+func (s *Server) newClient(ctx context.Context, addr *net.UDPAddr) *client {
 	addrStr := addr.String()
 	now := time.Now()
 	c := &client{
@@ -176,8 +178,8 @@ func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UD
 	return c
 }
 
-// processPacket decodes and processes a received UDP packet, sending responses
-// and forwarding the packet on to other clients as appropriate.
+// processPacket decodes a received UDP packet, delivering it to the appropriate
+// client based on address. A new client is started if none matches the address.
 func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *net.UDPAddr) {
 	packet := &ipx.Packet{}
 	if err := packet.UnmarshalBinary(packetBytes); err != nil {
@@ -189,7 +191,7 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 	s.mu.Lock()
 	srcClient, ok := s.clients[addr.String()]
 	if !ok {
-		srcClient = s.newClient(ctx, packet, addr)
+		srcClient = s.newClient(ctx, addr)
 	}
 	s.mu.Unlock()
 
