@@ -215,7 +215,9 @@ func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UD
 	s.clients[addrStr] = c
 
 	go func() {
-		err := startClient(ctx, c)
+		subctx, cancel := context.WithCancel(ctx)
+
+		err := startClient(subctx, c)
 
 		if errors.Is(err, io.ErrClosedPipe) {
 			err = nil
@@ -223,6 +225,7 @@ func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UD
 		if err != nil {
 			s.log("client %s terminated abnormally: %v", addrStr, err)
 		}
+		cancel()
 		c.Close()
 	}()
 	return c
