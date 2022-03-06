@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/ipxpkt"
@@ -41,7 +42,7 @@ var (
 	enableTap       = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
 	dumpPackets     = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
 	port            = flag.Int("port", 10000, "UDP port to listen on.")
-	clientTimeout   = flag.Duration("client_timeout", server.DefaultConfig.ClientTimeout, "Time of inactivity before disconnecting clients.")
+	clientTimeout   = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
 	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
 	allowNetBIOS    = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableIpxpkt    = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
