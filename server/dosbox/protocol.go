@@ -29,9 +29,9 @@ type Protocol struct {
 	// is created.
 	Network network.Network
 
-	// Always send at least one packet every few seconds to keep the
-	// UDP connection open. Some NAT networks and firewalls can be very
-	// aggressive about closing off the ability for clients to receive
+	// If non-zero, always send at least one packet every few seconds to
+	// keep the UDP connection open. Some NAT networks and firewalls can be
+	// very aggressive about closing off the ability for clients to receive
 	// packets on particular ports if nothing is received for a while.
 	// This controls the time for keepalives.
 	KeepaliveTime time.Duration
@@ -77,7 +77,9 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 
 	c.sendRegistrationReply()
 
-	go c.sendKeepalives(ctx, p.KeepaliveTime)
+	if p.KeepaliveTime > 0 {
+		go c.sendKeepalives(ctx, p.KeepaliveTime)
+	}
 
 	return ipx.DuplexCopyPackets(ctx, c, node)
 }
