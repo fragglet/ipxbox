@@ -133,7 +133,7 @@ func startClient(ctx context.Context, c *client) error {
 
 	c.s.log("%s: new connection, assigned IPX address %s",
 		c.addr.String(), network.NodeAddress(node))
-	p := dosbox.MakeProtocol(c, &nodeAddr)
+	p := dosbox.MakeClient(c, &nodeAddr)
 	p.SendRegistrationReply()
 
 	go p.SendKeepalives(ctx, c.s.config.KeepaliveTime)

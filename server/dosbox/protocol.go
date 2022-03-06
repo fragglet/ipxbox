@@ -10,29 +10,29 @@ import (
 )
 
 var (
-	_ = (ipx.ReadWriteCloser)(&Protocol{})
+	_ = (ipx.ReadWriteCloser)(&Client{})
 
 	// Server-initiated pings come from this address.
 	addrPingReply = [6]byte{0x02, 0xff, 0xff, 0xff, 0x00, 0x00}
 )
 
-// Protocol implements the dosbox protocol as a wrapper around an
+// Client implements the dosbox protocol as a wrapper around an
 // inner ReadWriteCloser that is used to send and receive IPX frames.
-type Protocol struct {
+type Client struct {
 	inner        ipx.ReadWriteCloser
 	nodeAddr     *ipx.Addr
 	mu           sync.Mutex
 	lastRecvTime time.Time
 }
 
-func MakeProtocol(inner ipx.ReadWriteCloser, nodeAddr *ipx.Addr) *Protocol {
-	return &Protocol{
+func MakeClient(inner ipx.ReadWriteCloser, nodeAddr *ipx.Addr) *Client {
+	return &Client{
 		inner:    inner,
 		nodeAddr: nodeAddr,
 	}
 }
 
-func (p *Protocol) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+func (p *Client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	for {
 		packet, err := p.inner.ReadPacket(ctx)
 		if err != nil {
@@ -49,18 +49,18 @@ func (p *Protocol) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	}
 }
 
-func (p *Protocol) WritePacket(packet *ipx.Packet) error {
+func (p *Client) WritePacket(packet *ipx.Packet) error {
 	return p.inner.WritePacket(packet)
 }
 
-func (p *Protocol) Close() error {
+func (p *Client) Close() error {
 	return p.inner.Close()
 }
 
 // SendRegistrationReply sends a response to the client when a registration
 // packet is received. This usually happens only once on first connect,
 // unless the reply is lost in transit.
-func (p *Protocol) SendRegistrationReply() {
+func (p *Client) SendRegistrationReply() {
 	p.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
 			Checksum:     0xffff,
@@ -83,7 +83,7 @@ func (p *Protocol) SendRegistrationReply() {
 // sendPing transmits a ping packet to the given client. The DOSbox IPX client
 // code recognizes broadcast packets sent to socket=2 and will send a reply to
 // the source address that we provide.
-func (p *Protocol) sendPing() {
+func (p *Client) sendPing() {
 	p.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
 			Dest: ipx.HeaderAddr{
@@ -103,7 +103,7 @@ func (p *Protocol) sendPing() {
 
 // SendKeepalives runs as a background goroutine while a client is connected,
 // sending keepalive pings to keep the connection alive.
-func (p *Protocol) SendKeepalives(ctx context.Context, checkPeriod time.Duration) {
+func (p *Client) SendKeepalives(ctx context.Context, checkPeriod time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
