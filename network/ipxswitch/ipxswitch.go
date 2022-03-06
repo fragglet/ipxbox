@@ -114,8 +114,10 @@ func (n *Network) forwardPacket(packet *ipx.Packet, src ipx.Writer) error {
 	if destNodeID == broadcastDest {
 		return n.broadcastPacket(packet, src)
 	}
-	node := n.nodesByID[destNodeID]
-	if node == src {
+	n.mu.RLock()
+	node, ok := n.nodesByID[destNodeID]
+	n.mu.RUnlock()
+	if !ok || node == src {
 		return nil
 	}
 	return node.rxpipe.WritePacket(packet)
