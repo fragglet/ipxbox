@@ -46,6 +46,25 @@ func (c *client) GetProperty(x interface{}) bool {
 	}
 }
 
+func (c *client) sendPingReply(addr *ipx.Addr) {
+	c.inner.WritePacket(&ipx.Packet{
+		Header: ipx.Header{
+			Dest: ipx.HeaderAddr{
+				Addr:   *addr,
+				Socket: 2,
+			},
+			Src: ipx.HeaderAddr{
+				Addr:   c.addr,
+				Socket: 0,
+			},
+		},
+	})
+}
+
+func isPing(hdr *ipx.Header) bool {
+	return hdr.Dest.Addr == ipx.AddrBroadcast && hdr.Dest.Socket == 2
+}
+
 func (c *client) recvLoop(ctx context.Context) {
 	for {
 		packet, err := c.inner.ReadPacket(ctx)
@@ -56,7 +75,15 @@ func (c *client) recvLoop(ctx context.Context) {
 			continue
 		}
 
-		// TODO: Send ping responses
+		// Respond to pings to keep the connection alive. Even if
+		// ReadPacket() isn't being called regularly, we still respond
+		// to pings to ensure the connection stays alive. For the same
+		// reason the pinger will always get a decent RTT measurement.
+		if isPing(packet.Header) {
+			c.sendPingReply(&packet.Header.Src.Addr)
+			continue
+		}
+
 		c.rxpipe.WritePacket(packet)
 	}
 }
