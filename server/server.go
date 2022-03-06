@@ -45,7 +45,6 @@ type client struct {
 	rxpipe          ipx.ReadWriteCloser
 	addr            *net.UDPAddr
 	lastReceiveTime time.Time
-	lastSendTime    time.Time
 }
 
 func (c *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
@@ -117,8 +116,10 @@ func New(addr string, n network.Network, c *Config) (*Server, error) {
 // DosboxProtocol implements the dosbox protocol as a wrapper around an
 // inner ReadWriteCloser that is used to send and receive IPX frames.
 type DosboxProtocol struct {
-	inner    ipx.ReadWriteCloser
-	nodeAddr *ipx.Addr
+	inner        ipx.ReadWriteCloser
+	nodeAddr     *ipx.Addr
+	mu           sync.Mutex
+	lastRecvTime time.Time
 }
 
 func (p *DosboxProtocol) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
@@ -127,6 +128,9 @@ func (p *DosboxProtocol) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 		if err != nil {
 			return nil, err
 		}
+		p.mu.Lock()
+		p.lastRecvTime = time.Now()
+		p.mu.Unlock()
 		if packet.Header.IsRegistrationPacket() {
 			p.sendRegistrationReply()
 			continue
@@ -143,8 +147,10 @@ func (p *DosboxProtocol) Close() error {
 	return p.inner.Close()
 }
 
+// sendRegistrationReply sends a response to the client when a registration
+// packet is received. This usually happens only once on first connect,
+// unless the reply is lost in transit.
 func (p *DosboxProtocol) sendRegistrationReply() {
-	// Send a reply back to the client
 	p.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
 			Checksum:     0xffff,
@@ -162,6 +168,53 @@ func (p *DosboxProtocol) sendRegistrationReply() {
 			},
 		},
 	})
+}
+
+// sendPing transmits a ping packet to the given client. The DOSbox IPX client
+// code recognizes broadcast packets sent to socket=2 and will send a reply to
+// the source address that we provide.
+func (p *DosboxProtocol) sendPing() {
+	p.inner.WritePacket(&ipx.Packet{
+		Header: ipx.Header{
+			Dest: ipx.HeaderAddr{
+				Addr:   ipx.AddrBroadcast,
+				Socket: 2,
+			},
+			// We send pings from an imaginary "ping reply" address
+			// because if we used ipx.AddrNull the reply would be
+			// indistinguishable from a registration packet.
+			Src: ipx.HeaderAddr{
+				Addr:   addrPingReply,
+				Socket: 0,
+			},
+		},
+	})
+}
+
+// sendKeepalives runs as a background goroutine while a client is connected,
+// sending keepalive pings to keep the connection alive.
+func (p *DosboxProtocol) sendKeepalives(ctx context.Context, checkPeriod time.Duration) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(checkPeriod):
+		}
+		now := time.Now()
+		p.mu.Lock()
+		lastRecvTime := p.lastRecvTime
+		p.mu.Unlock()
+		// Nothing sent in a while? Send a keepalive. This is
+		// important because some games use a client/server
+		// arrangement where the server does not broadcast
+		// anything but listens for broadcasts from clients. An
+		// example is Warcraft 2. If there is no activity
+		// between the client and server in a long time, some
+		// NAT gateways or firewalls can drop the association.
+		if now.After(lastRecvTime.Add(checkPeriod)) {
+			p.sendPing()
+		}
+	}
 }
 
 // startClient is invoked as a new goroutine when a new client connects.
@@ -187,10 +240,13 @@ func startClient(ctx context.Context, c *client) error {
 	c.s.log("%s: new connection, assigned IPX address %s",
 		c.addr.String(), network.NodeAddress(node))
 	p := &DosboxProtocol{
-		inner:    c,
-		nodeAddr: &nodeAddr,
+		inner:        c,
+		nodeAddr:     &nodeAddr,
+		lastRecvTime: time.Now(),
 	}
 	p.sendRegistrationReply()
+
+	go p.sendKeepalives(ctx, c.s.config.KeepaliveTime)
 
 	return ipx.DuplexCopyPackets(ctx, p, node)
 }
@@ -210,7 +266,6 @@ func (s *Server) newClient(ctx context.Context, packet *ipx.Packet, addr *net.UD
 		rxpipe:          pipe.New(1),
 		addr:            addr,
 		lastReceiveTime: now,
-		lastSendTime:    now,
 	}
 	s.clients[addrStr] = c
 
@@ -252,31 +307,6 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 	srcClient.rxpipe.WritePacket(packet)
 }
 
-// sendPing transmits a ping packet to the given client. The DOSbox IPX client
-// code recognizes broadcast packets sent to socket=2 and will send a reply to
-// the source address that we provide.
-func (s *Server) sendPing(c *client) {
-	header := &ipx.Header{
-		Dest: ipx.HeaderAddr{
-			Addr:   ipx.AddrBroadcast,
-			Socket: 2,
-		},
-		// We "send" the pings from an imaginary "ping reply" address
-		// because if we used ipx.AddrNull the reply would be
-		// indistinguishable from a registration packet.
-		Src: ipx.HeaderAddr{
-			Addr:   addrPingReply,
-			Socket: 0,
-		},
-	}
-
-	c.lastSendTime = time.Now()
-	encodedHeader, err := header.MarshalBinary()
-	if err == nil {
-		s.socket.WriteToUDP(encodedHeader, c.addr)
-	}
-}
-
 func (s *Server) allClients() []*client {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -287,10 +317,10 @@ func (s *Server) allClients() []*client {
 	return result
 }
 
-// checkClientTimeouts checks all clients that are connected to the server and
-// handles idle clients to which we have no sent data or from which we have not
-// received data recently. This function should be called regularly; it returns
-// the time that it should next be invoked.
+// checkClientTimeouts checks all clients connected to the server and
+// disconnects idle clients we have not received data from recently. This
+// function should be called regularly; it returns the time that it should next
+// be invoked.
 func (s *Server) checkClientTimeouts() time.Time {
 	now := time.Now()
 
@@ -299,23 +329,6 @@ func (s *Server) checkClientTimeouts() time.Time {
 	nextCheckTime := now.Add(10 * time.Second)
 
 	for _, c := range s.allClients() {
-		// Nothing sent in a while? Send a keepalive.
-		// This is important because some types of game use a
-		// client/server type arrangement where the server does not
-		// broadcast anything but listens for broadcasts from clients.
-		// An example is Warcraft 2. If there is no activity between
-		// the client and server in a long time, some NAT gateways or
-		// firewalls can drop the association.
-		keepaliveTime := c.lastSendTime.Add(s.config.KeepaliveTime)
-		if now.After(keepaliveTime) {
-			// We send a keepalive in the form of a ping packet
-			// that the client should respond to, thus keeping us
-			// from timing out the client from our own table if it
-			// really is still there.
-			s.sendPing(c)
-			keepaliveTime = c.lastSendTime.Add(s.config.KeepaliveTime)
-		}
-
 		// Nothing received in a long time? Time out the connection.
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
@@ -325,9 +338,6 @@ func (s *Server) checkClientTimeouts() time.Time {
 			c.Close()
 		}
 
-		if keepaliveTime.Before(nextCheckTime) {
-			nextCheckTime = keepaliveTime
-		}
 		if timeoutTime.Before(nextCheckTime) {
 			nextCheckTime = timeoutTime
 		}
