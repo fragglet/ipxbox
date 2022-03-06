@@ -1,5 +1,5 @@
-// Package server implements the server side of the DOSBox IPX protocol.
-package server
+// Package dosbox implements the server side of the DOSBox IPX protocol.
+package dosbox
 
 import (
 	"context"

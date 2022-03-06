@@ -14,7 +14,7 @@ import (
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/pipe"
 	"github.com/fragglet/ipxbox/network/stats"
-	dosbox "github.com/fragglet/ipxbox/server/dosbox"
+	"github.com/fragglet/ipxbox/server/dosbox"
 )
 
 var (
