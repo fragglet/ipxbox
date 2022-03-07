@@ -5,6 +5,7 @@ package dosbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -20,6 +21,18 @@ const maxConnectAttempts = 5
 var (
 	_ = (network.Node)(&client{})
 )
+
+type connectFailure struct {
+	addr string
+}
+
+func (cf *connectFailure) Error() string {
+	return fmt.Sprintf("failed to connect to server %q", cf.addr)
+}
+
+func (cf *connectFailure) Unwrap() error {
+	return os.ErrDeadlineExceeded
+}
 
 type client struct {
 	inner  ipx.ReadWriteCloser
@@ -111,14 +124,14 @@ func isRegistrationResponse(hdr *ipx.Header) bool {
 	return hdr.Dest.Socket == 2 && hdr.Src.Socket == 2 && hdr.Dest.Addr != ipx.AddrBroadcast
 }
 
-func handshakeConnect(ctx context.Context, c ipx.ReadWriteCloser) (ipx.Addr, error) {
+func handshakeConnect(ctx context.Context, c ipx.ReadWriteCloser, addr string) (ipx.Addr, error) {
 	nextSendTime := time.Now()
 	connectAttempts := 0
 	for {
 		now := time.Now()
 		if now.After(nextSendTime) {
 			if connectAttempts >= maxConnectAttempts {
-				return ipx.AddrNull, os.ErrDeadlineExceeded
+				return ipx.AddrNull, &connectFailure{addr}
 			}
 			sendRegistrationPacket(c)
 			connectAttempts++
@@ -147,7 +160,7 @@ func Dial(ctx context.Context, addr string) (network.Node, error) {
 		inner:  udp,
 		rxpipe: pipe.New(1),
 	}
-	if c.addr, err = handshakeConnect(ctx, udp); err != nil {
+	if c.addr, err = handshakeConnect(ctx, udp, addr); err != nil {
 		return nil, err
 	}
 	go c.recvLoop(context.Background())
