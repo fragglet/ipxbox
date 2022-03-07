@@ -100,7 +100,7 @@ func New(addr string, c *Config) (*Server, error) {
 		config:           c,
 		socket:           socket,
 		clients:          map[string]*client{},
-		timeoutCheckTime: time.Now().Add(10e9),
+		timeoutCheckTime: time.Now().Add(10 * time.Second),
 	}, nil
 }
 
