@@ -161,6 +161,7 @@ func Dial(ctx context.Context, addr string) (network.Node, error) {
 		rxpipe: pipe.New(1),
 	}
 	if c.addr, err = handshakeConnect(ctx, udp, addr); err != nil {
+		udp.Close()
 		return nil, err
 	}
 	go c.recvLoop(context.Background())
