@@ -6,12 +6,16 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"time"
 
 	udpclient "github.com/fragglet/ipxbox/client"
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/pipe"
 )
+
+const maxConnectAttempts = 5
 
 var (
 	_ = (network.Node)(&client{})
@@ -79,7 +83,7 @@ func (c *client) recvLoop(ctx context.Context) {
 		// ReadPacket() isn't being called regularly, we still respond
 		// to pings to ensure the connection stays alive. For the same
 		// reason the pinger will always get a decent RTT measurement.
-		if isPing(packet.Header) {
+		if isPing(&packet.Header) {
 			c.sendPingReply(&packet.Header.Src.Addr)
 			continue
 		}
@@ -88,15 +92,63 @@ func (c *client) recvLoop(ctx context.Context) {
 	}
 }
 
-func Dial(addr string) (network.Node, error) {
+func sendRegistrationPacket(c ipx.ReadWriteCloser) {
+	c.WritePacket(&ipx.Packet{
+		Header: ipx.Header{
+			Dest: ipx.HeaderAddr{
+				Addr:   ipx.AddrNull,
+				Socket: 2,
+			},
+			Src: ipx.HeaderAddr{
+				Addr:   ipx.AddrNull,
+				Socket: 2,
+			},
+		},
+	})
+}
+
+func isRegistrationResponse(hdr *ipx.Header) bool {
+	return hdr.Dest.Socket == 2 && hdr.Src.Socket == 2 && hdr.Dest.Addr != ipx.AddrBroadcast
+}
+
+func handshakeConnect(ctx context.Context, c ipx.ReadWriteCloser) (ipx.Addr, error) {
+	nextSendTime := time.Now()
+	connectAttempts := 0
+	for {
+		now := time.Now()
+		if now.After(nextSendTime) {
+			if connectAttempts >= maxConnectAttempts {
+				return ipx.AddrNull, os.ErrDeadlineExceeded
+			}
+			sendRegistrationPacket(c)
+			connectAttempts++
+			nextSendTime = now.Add(time.Second)
+		}
+		subctx, _ := context.WithDeadline(ctx, nextSendTime)
+		packet, err := c.ReadPacket(subctx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			continue
+		}
+		if err != nil {
+			return ipx.AddrNull, err
+		}
+		if isRegistrationResponse(&packet.Header) {
+			return packet.Header.Dest.Addr, nil
+		}
+	}
+}
+
+func Dial(ctx context.Context, addr string) (network.Node, error) {
 	udp, err := udpclient.Dial(addr)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Do connection handshake, obtain address.
 	c := &client{
 		inner:  udp,
 		rxpipe: pipe.New(1),
+	}
+	if c.addr, err = handshakeConnect(ctx, udp); err != nil {
+		return nil, err
 	}
 	go c.recvLoop(context.Background())
 	return c, nil
