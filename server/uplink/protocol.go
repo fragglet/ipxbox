@@ -148,13 +148,13 @@ func (c *client) authenticate(msg *Message) error {
 	}
 	solution := SolveChallenge(c.p.Password, c.challenge)
 	if !bytes.Equal(msg.Solution, solution) {
-		c.p.log("uplink client %s authentication rejected")
+		c.p.log("uplink client %s authentication rejected", c.addr)
 		// TODO: send fail response
 		return ErrAuthenticationRejected
 	}
 	c.mu.Lock()
 	if !c.authenticated {
-		c.p.log("uplink from %s authenticated successfully")
+		c.p.log("uplink from %s authenticated successfully", c.addr)
 		c.authenticated = true
 	}
 	c.mu.Unlock()
