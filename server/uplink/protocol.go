@@ -1,3 +1,7 @@
+// Package uplink implements the server side of the ipxbox uplink protocol.
+// This is largely the same IPX-in-UDP protocol used by DOSbox, but there
+// is a challenge-response authentication system to provide a bit more
+// security since uplinked packets can be any MAC address.
 package uplink
 
 import (
