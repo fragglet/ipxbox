@@ -25,9 +25,9 @@ var (
 	_ = (ipx.ReadWriteCloser)(&client{})
 	_ = (server.Protocol)(&Protocol{})
 
-	// Control packets for the connection take the form of IPX frames
-	// that have this destination address.
-	UplinkAddress = ipx.Addr{'U', 'p', 'L', 'i', 'N', 'K'}
+	// Address is a special IPX address used to identify control packets;
+	// control packets have this destination address.
+	Address = ipx.Addr{'U', 'p', 'L', 'i', 'N', 'K'}
 
 	ErrAuthenticationRejected = errors.New("authentication rejected")
 )
@@ -138,7 +138,7 @@ func (c *client) sendUplinkMessage(msg *Message) error {
 	c.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
 			Dest: ipx.HeaderAddr{
-				Addr: UplinkAddress,
+				Addr: Address,
 			},
 		},
 		Payload: jsonData,
@@ -197,7 +197,7 @@ func (c *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 		if err != nil {
 			return nil, err
 		}
-		if packet.Header.Dest.Addr == UplinkAddress {
+		if packet.Header.Dest.Addr == Address {
 			c.handleUplinkPacket(packet)
 		}
 
