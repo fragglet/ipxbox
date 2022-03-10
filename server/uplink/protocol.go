@@ -85,13 +85,21 @@ type Protocol struct {
 	Password string
 }
 
+func (p *Protocol) log(format string, args ...interface{}) {
+	if p.Logger != nil {
+		p.Logger.Printf(format, args...)
+	}
+}
+
 // StartClient is invoked as a new goroutine when a new client connects.
 func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, remoteAddr net.Addr) error {
 	c := &client{
 		p:         p,
 		inner:     inner,
 		challenge: make([]byte, MinChallengeLength),
+		addr:      remoteAddr,
 	}
+	p.log("new uplink client from %s", remoteAddr)
 	if _, err := rand.Read(c.challenge); err != nil {
 		return err
 	}
@@ -107,6 +115,7 @@ type client struct {
 	authenticated bool
 	challenge     []byte
 	mu            sync.Mutex
+	addr          net.Addr
 }
 
 func SolveChallenge(password string, challenge []byte) []byte {
@@ -139,9 +148,16 @@ func (c *client) authenticate(msg *Message) error {
 	}
 	solution := SolveChallenge(c.p.Password, c.challenge)
 	if !bytes.Equal(msg.Solution, solution) {
+		c.p.log("uplink client %s authentication rejected")
 		// TODO: send fail response
 		return ErrAuthenticationRejected
 	}
+	c.mu.Lock()
+	if !c.authenticated {
+		c.p.log("uplink from %s authenticated successfully")
+		c.authenticated = true
+	}
+	c.mu.Unlock()
 	return c.sendUplinkMessage(&Message{
 		Type:     messageTypeSubmitSolutionAccepted,
 		Solution: SolveChallenge(c.p.Password, msg.Challenge),
