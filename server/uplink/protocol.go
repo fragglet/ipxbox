@@ -122,8 +122,8 @@ type client struct {
 	addr          net.Addr
 }
 
-func SolveChallenge(password string, challenge []byte) []byte {
-	hashData := append([]byte{}, challenge...)
+func SolveChallenge(side, password string, challenge []byte) []byte {
+	hashData := append([]byte(side), challenge...)
 	hashData = append(hashData, []byte(password)...)
 	hashData = append(hashData, challenge...)
 	solution := sha256.Sum256(hashData)
@@ -150,7 +150,7 @@ func (c *client) authenticate(msg *Message) error {
 	if len(msg.Challenge) < MinChallengeLength {
 		return fmt.Errorf("client challenge too short: want minimum %d bytes, got %d", MinChallengeLength, len(msg.Challenge))
 	}
-	solution := SolveChallenge(c.p.Password, c.challenge)
+	solution := SolveChallenge("client", c.p.Password, c.challenge)
 	if !bytes.Equal(msg.Solution, solution) {
 		c.p.log("uplink client %s authentication rejected", c.addr)
 		// TODO: send fail response
@@ -164,7 +164,7 @@ func (c *client) authenticate(msg *Message) error {
 	c.mu.Unlock()
 	return c.sendUplinkMessage(&Message{
 		Type:     messageTypeSubmitSolutionAccepted,
-		Solution: SolveChallenge(c.p.Password, msg.Challenge),
+		Solution: SolveChallenge("server", c.p.Password, msg.Challenge),
 	})
 }
 
