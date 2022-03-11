@@ -52,6 +52,7 @@ func (c *Client) recvLoop() {
 			return
 		} else if err != nil {
 			// TODO: Log error?
+			continue
 		}
 
 		p := &ipx.Packet{}
