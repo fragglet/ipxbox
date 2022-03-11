@@ -73,6 +73,14 @@ type Message struct {
 	Solution  []byte `json:"solution",omitempty`
 }
 
+func (m *Message) Marshal() ([]byte, error) {
+        return json.Marshal(m)
+}
+
+func (m *Message) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, m)
+}
+
 // Protocol is an implementation of server.Protocol that provides uplink
 // capability.
 type Protocol struct {
@@ -131,7 +139,7 @@ func SolveChallenge(side, password string, challenge []byte) []byte {
 }
 
 func (c *client) sendUplinkMessage(msg *Message) error {
-	jsonData, err := json.Marshal(msg)
+	jsonData, err := msg.Marshal()
 	if err != nil {
 		return err
 	}
@@ -170,7 +178,7 @@ func (c *client) authenticate(msg *Message) error {
 
 func (c *client) handleUplinkPacket(packet *ipx.Packet) error {
 	var msg Message
-	if err := json.Unmarshal(packet.Payload, &msg); err != nil {
+	if err := msg.Unmarshal(packet.Payload); err != nil {
 		return err
 	}
 	switch msg.Type {
