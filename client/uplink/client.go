@@ -87,7 +87,7 @@ func (c *client) sendUntilResponse(ctx context.Context, msg *uplink.Message) (*u
 			nextSendTime = now.Add(time.Second)
 		}
 		subctx, _ := context.WithDeadline(ctx, nextSendTime)
-		packet, err := c.ReadPacket(subctx)
+		packet, err := c.inner.ReadPacket(subctx)
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
 			continue
