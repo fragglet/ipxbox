@@ -33,34 +33,34 @@ var (
 )
 
 const (
-	// messageTypeGetChallengeRequest is the uplink message type initially
+	// MessageTypeGetChallengeRequest is the uplink message type initially
 	// sent from client to server, requesting a challenge nonce. No other
 	// field is set.
 	// {"message-type": "get-challenge-request"}
-	messageTypeGetChallengeRequest = "get-challenge-request"
+	MessageTypeGetChallengeRequest = "get-challenge-request"
 
-	// messageTypeGetChallengeResponse is the uplink message type returned
-	// by the server in response to messageTypeGetChallengeRequest.
+	// MessageTypeGetChallengeResponse is the uplink message type returned
+	// by the server in response to MessageTypeGetChallengeRequest.
 	// {"message-type": "get-challenge-response",
 	//  "challenge": "[base64 challenge bytes]"}
-	messageTypeGetChallengeResponse = "get-challenge-response"
+	MessageTypeGetChallengeResponse = "get-challenge-response"
 
-	// messageTypeSubmitSolution is the uplink message type sent from the
+	// MessageTypeSubmitSolution is the uplink message type sent from the
 	// client to server submitting its solution to the challenge from the
 	// server. It also contains its own reverse-challenge to the server.
 	// {"message-type": "submit-solution",
 	//  "solution": "[base64 solution to server challenge]",
 	//  "challenge": "[base64 challenge bytes]"}
-	messageTypeSubmitSolution = "submit-solution"
+	MessageTypeSubmitSolution = "submit-solution"
 
-	// messageTypeSubmitSolutionAccepted is the uplink message type sent
+	// MessageTypeSubmitSolutionAccepted is the uplink message type sent
 	// from the server to client confirming it accepts the client's
 	// solution to the challenge. It also contains its own solution to the
 	// client's challenge. At this point the server has confirmed
 	// authentication of the client and will begin allowing traffic.
 	// {"message-type": "submit-solution-accepted",
 	//  "solution": "[base64 solution to client challenge]"}
-	messageTypeSubmitSolutionAccepted = "submit-solution-accepted"
+	MessageTypeSubmitSolutionAccepted = "submit-solution-accepted"
 )
 
 const (
@@ -163,7 +163,7 @@ func (c *client) authenticate(msg *Message) error {
 	}
 	c.mu.Unlock()
 	return c.sendUplinkMessage(&Message{
-		Type:     messageTypeSubmitSolutionAccepted,
+		Type:     MessageTypeSubmitSolutionAccepted,
 		Solution: SolveChallenge("server", c.p.Password, msg.Challenge),
 	})
 }
@@ -174,12 +174,12 @@ func (c *client) handleUplinkPacket(packet *ipx.Packet) error {
 		return err
 	}
 	switch msg.Type {
-	case messageTypeGetChallengeRequest:
+	case MessageTypeGetChallengeRequest:
 		return c.sendUplinkMessage(&Message{
-			Type:      messageTypeGetChallengeResponse,
+			Type:      MessageTypeGetChallengeResponse,
 			Challenge: c.challenge,
 		})
-	case messageTypeSubmitSolution:
+	case MessageTypeSubmitSolution:
 		return c.authenticate(&msg)
 	}
 	return nil
