@@ -10,7 +10,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -29,8 +28,6 @@ var (
 	// Address is a special IPX address used to identify control packets;
 	// control packets have this destination address.
 	Address = ipx.Addr{'U', 'p', 'L', 'i', 'N', 'K'}
-
-	ErrAuthenticationRejected = errors.New("authentication rejected")
 )
 
 const (
@@ -62,6 +59,13 @@ const (
 	// {"message-type": "submit-solution-accepted",
 	//  "solution": "[base64 solution to client challenge]"}
 	MessageTypeSubmitSolutionAccepted = "submit-solution-accepted"
+
+	// MessageTypeSubmitSolutionRejected is the uplink message type sent
+	// from the server to the client when the client's solution is not
+	// accepted. Essentially this is wrong password, authentication
+	// rejected.
+	// {"message-type": "submit-solution-rejected"}
+	MessageTypeSubmitSolutionRejected = "submit-solution-rejected"
 )
 
 const (
@@ -173,8 +177,10 @@ func (c *client) authenticate(msg *Message) error {
 	solution := SolveChallenge("client", c.p.Password, c.challenge)
 	if !bytes.Equal(msg.Solution, solution) {
 		c.p.log("uplink client %s authentication rejected", c.addr)
-		// TODO: send fail response
-		return ErrAuthenticationRejected
+		c.Close()
+		return c.sendUplinkMessage(&Message{
+			Type: MessageTypeSubmitSolutionRejected,
+		})
 	}
 	c.mu.Lock()
 	if !c.authenticated {

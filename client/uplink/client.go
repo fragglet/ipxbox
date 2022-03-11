@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	udpclient "github.com/fragglet/ipxbox/client"
@@ -130,6 +131,8 @@ func (c *client) handshakeConnect(ctx context.Context, password string) error {
 	switch {
 	case err != nil:
 		return err
+	case response.Type == uplink.MessageTypeSubmitSolutionRejected:
+		return os.ErrPermission
 	case response.Type != uplink.MessageTypeSubmitSolutionAccepted:
 		return fmt.Errorf("wrong response type from server: want %q, got %q", uplink.MessageTypeSubmitSolutionAccepted, response.Type)
 	case !bytes.Equal(response.Solution, clientSolution):
