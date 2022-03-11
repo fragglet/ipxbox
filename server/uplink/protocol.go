@@ -18,6 +18,7 @@ import (
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
+	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/server"
 )
 
@@ -74,7 +75,7 @@ type Message struct {
 }
 
 func (m *Message) Marshal() ([]byte, error) {
-        return json.Marshal(m)
+	return json.Marshal(m)
 }
 
 func (m *Message) Unmarshal(data []byte) error {
@@ -106,17 +107,28 @@ func (p *Protocol) log(format string, args ...interface{}) {
 // StartClient is invoked as a new goroutine when a new client connects.
 func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, remoteAddr net.Addr) error {
 	c := &client{
-		p:         p,
-		inner:     inner,
-		challenge: make([]byte, MinChallengeLength),
-		addr:      remoteAddr,
+		p:             p,
+		inner:         inner,
+		authenticated: false,
+		challenge:     make([]byte, MinChallengeLength),
+		addr:          remoteAddr,
 	}
 	p.log("new uplink client from %s", remoteAddr)
 	if _, err := rand.Read(c.challenge); err != nil {
 		return err
 	}
-	// TODO
-	return nil
+	// TODO: Send keepalives to client
+
+	node := p.Network.NewNode()
+	defer func() {
+		node.Close()
+		statsString := stats.Summary(node)
+		if statsString != "" {
+			p.log("uplink client %s: final statistics: %s",
+				remoteAddr.String(), statsString)
+		}
+	}()
+	return ipx.DuplexCopyPackets(ctx, c, node)
 }
 
 // client implements the uplink protocol as a wrapper around an inner
