@@ -42,6 +42,11 @@ type Protocol interface {
 	// receive packets to the client. Returning from the method call
 	// closes the connection.
 	StartClient(context.Context, ipx.ReadWriteCloser, net.Addr) error
+
+	// IsRegistrationPacket is invoked when a new client is created, to
+	// determine if the client is attempting to connect with this protocol.
+	// The function returns true if it is a valid registration packet.
+	IsRegistrationPacket(*ipx.Packet) bool
 }
 
 // client represents a client that is connected to an IPX server.

@@ -108,6 +108,20 @@ func (p *Protocol) log(format string, args ...interface{}) {
 	}
 }
 
+// IsRegistrationPacket returns true if this is an uplink packet of type
+// MessageTypeGetChallengeRequest, which is the opening packet of a
+// connection handshake.
+func (p *Protocol) IsRegistrationPacket(packet *ipx.Packet) bool {
+	if packet.Header.Dest.Addr != Address {
+		return false
+	}
+	var msg Message
+	if err := msg.Unmarshal(packet.Payload); err != nil {
+		return false
+	}
+	return msg.Type == MessageTypeGetChallengeRequest
+}
+
 // StartClient is invoked as a new goroutine when a new client connects.
 func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, remoteAddr net.Addr) error {
 	c := &client{
