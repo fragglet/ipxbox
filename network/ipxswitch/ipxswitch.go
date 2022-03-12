@@ -49,6 +49,7 @@ var (
 // will return an error and packets sent to its address will not be delivered.
 func (n *node) Close() error {
 	n.net.mu.Lock()
+	n.net.table.DeletePort(n.nodeID)
 	delete(n.net.nodesByID, n.nodeID)
 	n.net.mu.Unlock()
 	return n.rxpipe.Close()
