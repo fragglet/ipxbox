@@ -48,19 +48,28 @@ func (t *routingTable) Record(sourcePort int, src *ipx.HeaderAddr) {
 	key := makeKey(src)
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	pd, ok := t.ports[sourcePort]
+	if !ok {
+		return
+	}
 	ad, ok := t.addrs[*key]
 	if !ok {
-		pd, ok := t.ports[sourcePort]
-		if !ok {
-			return
-		}
 		pd.addrs[*key] = true
 		ad = &addressData{portID: sourcePort}
 		t.addrs[*key] = ad
+	} else if ad.portID != sourcePort {
+		// Another port was marked as the source for this address.
+		// Deassociate from other port, and reassign to new port.
+		// This can happen if an uplink client disconnects and then
+		// reconnects.
+		ad.portID = sourcePort
+		if otherPD, ok := t.ports[ad.portID]; ok {
+			delete(otherPD.addrs, *key)
+		}
+		pd.addrs[*key] = true
 	}
 	// TODO: Garbage collection goroutine for stale addresses
 	ad.lastRXTime = time.Now()
-	// TODO: if ad.portID != sourcePort?
 }
 
 // LookupDest returns a destination port number to send a packet based on the
@@ -96,7 +105,9 @@ func (t *routingTable) DeletePort(portID int) {
 		return
 	}
 	for key := range pd.addrs {
-		delete(t.addrs, key)
+		if ad, ok := t.addrs[key]; ok && ad.portID == portID {
+			delete(t.addrs, key)
+		}
 	}
 }
 
