@@ -26,53 +26,19 @@ import (
 	"github.com/fragglet/ipxbox/syslog"
 
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
-	"github.com/songgao/water"
 )
-
-var framers = map[string]phys.Framer{
-	"802.2":    phys.Framer802_2,
-	"802.3raw": phys.Framer802_3Raw,
-	"snap":     phys.FramerSNAP,
-	"eth-ii":   phys.FramerEthernetII,
-}
 
 var (
-	pcapDevice      = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
-	enableTap       = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
-	dumpPackets     = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
-	port            = flag.Int("port", 10000, "UDP port to listen on.")
-	clientTimeout   = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
-	ethernetFraming = flag.String("ethernet_framing", "802.2", `Framing to use when sending Ethernet packets. Valid values are "802.2", "802.3raw", "snap" and "eth-ii".`)
-	allowNetBIOS    = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
-	enableIpxpkt    = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
-	enableSyslog    = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
-	quakeServers    = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
-	enablePPTP      = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
+	dumpPackets   = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
+	port          = flag.Int("port", 10000, "UDP port to listen on.")
+	clientTimeout = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
+	allowNetBIOS  = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
+	enableIpxpkt  = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
+	enableSyslog  = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
+	quakeServers  = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
+	enablePPTP    = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
-
-func ethernetStream() (phys.DuplexEthernetStream, error) {
-	if *enableTap {
-		return phys.NewTap(water.Config{})
-	} else if *pcapDevice == "" {
-		return nil, nil
-	}
-	// TODO: List
-	handle, err := pcap.OpenLive(*pcapDevice, 1500, true, pcap.BlockForever)
-	if err != nil {
-		return nil, err
-	}
-	// As an optimization we set a filter to only deliver IPX packets
-	// because they're all we care about. However, when ipxpkt routing is
-	// enabled we want all Ethernet frames.
-	if !*enableIpxpkt {
-		if err := handle.SetBPFFilter("ipx"); err != nil {
-			return nil, err
-		}
-	}
-	return handle, nil
-}
 
 func addQuakeProxies(ctx context.Context, net network.Network) {
 	if *quakeServers == "" {
@@ -134,6 +100,7 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 }
 
 func main() {
+	physFlags := phys.RegisterFlags()
 	flag.Parse()
 
 	ctx := context.Background()
@@ -150,22 +117,16 @@ func main() {
 
 	net, uplinkable := makeNetwork(ctx)
 
-	stream, err := ethernetStream()
+	physLink, err := physFlags.MakePhys(*enableIpxpkt)
 	if err != nil {
 		log.Fatalf("failed to set up physical network: %v", err)
-	} else if stream != nil {
-		framer, ok := framers[*ethernetFraming]
-		if !ok {
-			log.Fatalf("unknown Ethernet framing %q", *ethernetFraming)
-		}
-
-		p := phys.NewPhys(stream, framer)
+	} else if physLink != nil {
 		port := uplinkable.NewNode()
-		go p.Run()
-		go ipx.DuplexCopyPackets(ctx, p, port)
+		go physLink.Run()
+		go ipx.DuplexCopyPackets(ctx, physLink, port)
 		if *enableIpxpkt {
 			r := ipxpkt.NewRouter(net.NewNode())
-			go phys.CopyFrames(r, p.NonIPX())
+			go phys.CopyFrames(r, physLink.NonIPX())
 		}
 	}
 	addQuakeProxies(ctx, net)
