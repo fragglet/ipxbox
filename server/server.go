@@ -166,17 +166,17 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 		return
 	}
 
-	// Is this a supported protocol?
-	protocol, ok := s.findProtocol(packet)
-	if !ok {
-		return
-	}
-
 	// Find which client sent it, and forward to receive queue.
 	// If we don't find a client matching this address, start a new one.
 	s.mu.Lock()
 	srcClient, ok := s.clients[addr.String()]
 	if !ok {
+		// Is this a supported protocol?
+		protocol, ok := s.findProtocol(packet)
+		if !ok {
+			return
+		}
+
 		srcClient = s.newClient(ctx, protocol, addr)
 	}
 	s.mu.Unlock()
