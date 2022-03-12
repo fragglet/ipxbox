@@ -47,13 +47,24 @@ func (p *Protocol) log(format string, args ...interface{}) {
 	}
 }
 
+func isRegistrationPacket(packet *ipx.Packet) bool {
+	h := &packet.Header
+	return h.Dest.Socket == 2 && h.Dest.Network == ipx.ZeroNetwork && h.Dest.Addr == ipx.AddrNull
+}
+
+// IsRegistrationPacket returns true if the given packet is a DOSbox protocol
+// registration packet.
+func (p *Protocol) IsRegistrationPacket(packet *ipx.Packet) bool {
+	return isRegistrationPacket(packet)
+}
+
 // StartClient is invoked as a new goroutine when a new client connects.
 func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, remoteAddr net.Addr) error {
 	packet, err := inner.ReadPacket(ctx)
 	if err != nil {
 		return err
 	}
-	if !packet.Header.IsRegistrationPacket() {
+	if !isRegistrationPacket(packet) {
 		return nil
 	}
 	node := p.Network.NewNode()
@@ -102,7 +113,7 @@ func (p *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 		p.mu.Lock()
 		p.lastRecvTime = time.Now()
 		p.mu.Unlock()
-		if packet.Header.IsRegistrationPacket() {
+		if isRegistrationPacket(packet) {
 			p.sendRegistrationReply()
 			continue
 		}

@@ -115,10 +115,6 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	return result, nil
 }
 
-func (h *Header) IsRegistrationPacket() bool {
-	return h.Dest.Socket == 2 && h.Dest.Network == ZeroNetwork && h.Dest.Addr == AddrNull
-}
-
 func (h *Header) IsBroadcast() bool {
 	return h.Dest.Addr == AddrBroadcast
 }
