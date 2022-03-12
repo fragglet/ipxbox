@@ -39,6 +39,21 @@ func makeKey(addr *ipx.HeaderAddr) *ipx.HeaderAddr {
 	return result
 }
 
+// checkDestPort performs a check that packets for the given key map to the
+// given destination port. Only a read lock is held.
+func (t *routingTable) checkDestPort(key *ipx.HeaderAddr, destPort int) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	ad, ok := t.addrs[*key]
+	if !ok {
+		return false
+	}
+	if ad.portID != destPort {
+		return false
+	}
+	return time.Since(ad.lastRXTime) < 5*time.Second
+}
+
 // Record saves an address found in the source address field of a packet that
 // was received on the given port number.
 func (t *routingTable) Record(sourcePort int, src *ipx.HeaderAddr) {
@@ -46,6 +61,13 @@ func (t *routingTable) Record(sourcePort int, src *ipx.HeaderAddr) {
 		return
 	}
 	key := makeKey(src)
+	// We should not need to acquire a write lock to the routing table for
+	// every packet received. Instead, first perform a "fast path" check to
+	// see if nothing needs to be changed. Only if the check fails do we
+	// proceed with acquiring a write lock to update the table.
+	if t.checkDestPort(key, sourcePort) {
+		return
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	pd, ok := t.ports[sourcePort]
