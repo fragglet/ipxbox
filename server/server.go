@@ -24,7 +24,7 @@ var (
 type Config struct {
 	// Protocol contains the implementation of the inner protocol
 	// logic.
-	Protocol Protocol
+	Protocols []Protocol
 
 	// Clients time out if nothing is received for this amount of time.
 	ClientTimeout time.Duration
@@ -115,10 +115,22 @@ func (s *Server) log(format string, args ...interface{}) {
 	}
 }
 
+// findProtocol checks the protocols supported by the server and returns
+// a Protocol that matches the given packet. If no valid protocols are
+// found then nil, false is returned.
+func (s *Server) findProtocol(packet *ipx.Packet) (Protocol, bool) {
+	for _, proto := range s.config.Protocols {
+		if proto.IsRegistrationPacket(packet) {
+			return proto, true
+		}
+	}
+	return nil, false
+}
+
 // newClient is invoked when a new client should be started. When called, a
 // packet has been received from the given address but no client matches the
 // address.
-func (s *Server) newClient(ctx context.Context, addr *net.UDPAddr) *client {
+func (s *Server) newClient(ctx context.Context, protocol Protocol, addr *net.UDPAddr) *client {
 	addrStr := addr.String()
 	now := time.Now()
 	c := &client{
@@ -132,7 +144,7 @@ func (s *Server) newClient(ctx context.Context, addr *net.UDPAddr) *client {
 	go func() {
 		subctx, cancel := context.WithCancel(ctx)
 
-		err := s.config.Protocol.StartClient(subctx, c, addr)
+		err := protocol.StartClient(subctx, c, addr)
 
 		if errors.Is(err, io.ErrClosedPipe) {
 			err = nil
@@ -154,12 +166,18 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 		return
 	}
 
+	// Is this a supported protocol?
+	protocol, ok := s.findProtocol(packet)
+	if !ok {
+		return
+	}
+
 	// Find which client sent it, and forward to receive queue.
 	// If we don't find a client matching this address, start a new one.
 	s.mu.Lock()
 	srcClient, ok := s.clients[addr.String()]
 	if !ok {
-		srcClient = s.newClient(ctx, addr)
+		srcClient = s.newClient(ctx, protocol, addr)
 	}
 	s.mu.Unlock()
 

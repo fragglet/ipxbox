@@ -139,10 +139,12 @@ func main() {
 	}
 
 	s, err := server.New(fmt.Sprintf(":%d", *port), &server.Config{
-		Protocol: &dosbox.Protocol{
-			Logger:        logger,
-			Network:       net,
-			KeepaliveTime: 5 * time.Second,
+		Protocols: []server.Protocol{
+			&dosbox.Protocol{
+				Logger:        logger,
+				Network:       net,
+				KeepaliveTime: 5 * time.Second,
+			},
 		},
 		ClientTimeout: *clientTimeout,
 		Logger:        logger,
