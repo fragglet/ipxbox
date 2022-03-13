@@ -9,12 +9,14 @@ import (
 
 	"github.com/fragglet/ipxbox/client/uplink"
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/network/filter"
 	"github.com/fragglet/ipxbox/phys"
 )
 
 var (
 	uplinkServer = flag.String("uplink_server", "", "Address of IPX uplink server.")
 	password     = flag.String("password", "", "Password for uplink server.")
+	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 )
 
 func main() {
@@ -38,7 +40,9 @@ func main() {
 	}
 	defer conn.Close()
 	go physLink.Run()
-	// TODO: Filter NetBIOS to protect against malicious servers
+	if !*allowNetBIOS {
+		conn = filter.New(conn)
+	}
 	if err := ipx.DuplexCopyPackets(ctx, conn, physLink); err != nil {
 		log.Fatalf("error while copying packets: %v", err)
 	}

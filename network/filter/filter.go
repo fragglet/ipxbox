@@ -12,7 +12,7 @@ import (
 
 var (
 	_ = (network.Network)(&filteringNetwork{})
-	_ = (network.Node)(&node{})
+	_ = (network.Node)(&filter{})
 
 	// Well-known IPX ports used for NetBIOS/SMB.
 	netbiosPorts = map[uint16]bool{
@@ -32,39 +32,60 @@ var (
 	FilteredPacketError = errors.New("packet filtered")
 )
 
+type filter struct {
+	inner ipx.ReadWriteCloser
+}
+
+func shouldFilter(hdr *ipx.Header) bool {
+	return netbiosPorts[hdr.Dest.Socket] || netbiosPorts[hdr.Src.Socket]
+}
+
+func (f *filter) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+	for {
+		packet, err := f.inner.ReadPacket(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !shouldFilter(&packet.Header) {
+			return packet, nil
+		}
+	}
+}
+
+func (f *filter) WritePacket(packet *ipx.Packet) error {
+	if shouldFilter(&packet.Header) {
+		return FilteredPacketError
+	}
+	return f.inner.WritePacket(packet)
+}
+
+func (f *filter) Close() error {
+	return f.inner.Close()
+}
+
+func (f *filter) GetProperty(x interface{}) bool {
+	if node, ok := f.inner.(network.Node); ok {
+		return node.GetProperty(x)
+	}
+	return false
+}
+
 type filteringNetwork struct {
 	inner network.Network
 }
 
 func (n *filteringNetwork) NewNode() network.Node {
-	return &node{inner: n.inner.NewNode()}
-}
-
-type node struct {
-	inner network.Node
-}
-
-func (n *node) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
-	return n.inner.ReadPacket(ctx)
-}
-
-func (n *node) WritePacket(packet *ipx.Packet) error {
-	if netbiosPorts[packet.Header.Dest.Socket] || netbiosPorts[packet.Header.Src.Socket] {
-		return FilteredPacketError
-	}
-	return n.inner.WritePacket(packet)
-}
-
-func (n *node) Close() error {
-	return n.inner.Close()
-}
-
-func (n *node) GetProperty(x interface{}) bool {
-	return n.inner.GetProperty(x)
+	return &filter{inner: n.inner.NewNode()}
 }
 
 // Wrap creates a network that wraps the given network but rejects packets
 // using certain well-known port numbers which could present a security risk.
 func Wrap(n network.Network) network.Network {
 	return &filteringNetwork{inner: n}
+}
+
+// New creates a new ReadWriteCloser that wraps the given ReadWriteCloser
+// but discards packets using well-known port numbers.
+func New(inner ipx.ReadWriteCloser) ipx.ReadWriteCloser {
+	return &filter{inner: inner}
 }
