@@ -98,7 +98,7 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	uplinkable := net
 	net = addressable.Wrap(net)
 	net = stats.Wrap(net)
-	return net, uplinkable
+	return net, stats.Wrap(uplinkable)
 }
 
 func main() {
