@@ -38,6 +38,9 @@ func (c *client) WritePacket(packet *ipx.Packet) error {
 }
 
 func (c *client) Close() error {
+	c.sendUplinkMessage(&uplink.Message{
+		Type: uplink.MessageTypeClose,
+	})
 	c.rxpipe.Close()
 	return c.inner.Close()
 }

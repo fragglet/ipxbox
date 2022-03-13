@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to server: %v", err)
 	}
+	defer conn.Close()
 	go physLink.Run()
 	// TODO: Filter NetBIOS to protect against malicious servers
 	if err := ipx.DuplexCopyPackets(ctx, conn, physLink); err != nil {

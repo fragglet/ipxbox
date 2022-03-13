@@ -66,6 +66,11 @@ const (
 	// rejected.
 	// {"message-type": "submit-solution-rejected"}
 	MessageTypeSubmitSolutionRejected = "submit-solution-rejected"
+
+	// MessageTypeClose is the uplink message type from the client to
+	// the server to close the connection and disconnect.
+	// {"message-type": "close-connection"}
+	MessageTypeClose = "close-connection"
 )
 
 const (
@@ -221,6 +226,9 @@ func (c *client) handleUplinkPacket(packet *ipx.Packet) error {
 		})
 	case MessageTypeSubmitSolution:
 		return c.authenticate(&msg)
+	case MessageTypeClose:
+		c.p.log("uplink client %s closed connection", c.addr)
+		c.Close()
 	}
 	return nil
 }
