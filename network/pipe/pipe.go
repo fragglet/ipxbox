@@ -18,14 +18,14 @@ import (
 )
 
 const (
-    // maxBufferedPackets is the number of packets to buffer in a pipe
-    // before we start to drop packets. The rationale for this number
-    // is as follows: in a peer-to-peer game (Doom, Duke3D...) it is
-    // common to send a burst of packets, one to every other node in
-    // the game. Therefore we should be able to cope with such bursts
-    // up to the maximum number of players we might plausibly see in
-    // an IPX game. This seems like a reasonable upper bound.
-    maxBufferedPackets = 16
+	// maxBufferedPackets is the number of packets to buffer in a pipe
+	// before we start to drop packets. The rationale for this number
+	// is as follows: in a peer-to-peer game (Doom, Duke3D...) it is
+	// common to send a burst of packets, one to every other node in
+	// the game. Therefore we should be able to cope with such bursts
+	// up to the maximum number of players we might plausibly see in
+	// an IPX game. This seems like a reasonable upper bound.
+	maxBufferedPackets = 16
 )
 
 var (
