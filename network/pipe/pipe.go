@@ -17,6 +17,17 @@ import (
 	"github.com/fragglet/ipxbox/ipx"
 )
 
+const (
+    // maxBufferedPackets is the number of packets to buffer in a pipe
+    // before we start to drop packets. The rationale for this number
+    // is as follows: in a peer-to-peer game (Doom, Duke3D...) it is
+    // common to send a burst of packets, one to every other node in
+    // the game. Therefore we should be able to cope with such bursts
+    // up to the maximum number of players we might plausibly see in
+    // an IPX game. This seems like a reasonable upper bound.
+    maxBufferedPackets = 16
+)
+
 var (
 	_ = (ipx.ReadWriteCloser)(&pipe{})
 
@@ -41,8 +52,7 @@ func (p *pipe) Close() error {
 
 // WritePacket sends a packet to the channel. This function never blocks. If
 // the pipe can hold no more data (eg. the reader has stopped reading) then
-// PipeFullError may be returned. This function will return len(data) even
-// if the reader was not able to read all those bytes.
+// PipeFullError may be returned.
 func (p *pipe) WritePacket(pkt *ipx.Packet) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -59,8 +69,8 @@ func (p *pipe) WritePacket(pkt *ipx.Packet) error {
 	}
 }
 
-// ReadPacket blocks until data can be read into the provided buffer or until
-// the pipe is closed.
+// ReadPacket blocks until a packet is received, the pipe is closed or the
+// context expires.
 func (p *pipe) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	p.mu.Lock()
 	closed := p.closed
@@ -79,13 +89,11 @@ func (p *pipe) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	}
 }
 
-// New returns a new pipe that buffers `size` number of writes internally.
-// This is conceptually similar to io.Pipe(), except for the differences
-// listed in the package description, and the fact that we return only a
-// single thing that implements both Reader and Writer.
-func New(size int) *pipe {
+// New returns a new pipe that buffers a number of writes internally.
+// This is conceptually similar to io.Pipe(), but for IPX packets.
+func New() *pipe {
 	p := &pipe{
-		ch: make(chan *ipx.Packet, size),
+		ch: make(chan *ipx.Packet, maxBufferedPackets),
 	}
 	return p
 }

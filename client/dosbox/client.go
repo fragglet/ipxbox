@@ -158,7 +158,7 @@ func Dial(ctx context.Context, addr string) (network.Node, error) {
 	}
 	c := &client{
 		inner:  udp,
-		rxpipe: pipe.New(1),
+		rxpipe: pipe.New(),
 	}
 	if c.addr, err = handshakeConnect(ctx, udp, addr); err != nil {
 		udp.Close()

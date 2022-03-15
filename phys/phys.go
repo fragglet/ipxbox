@@ -18,10 +18,6 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
-const (
-	numBufferedPackets = 8
-)
-
 var (
 	_ = (ipx.WriteCloser)(&Sink{})
 	_ = (ipx.ReadWriteCloser)(&Phys{})
@@ -246,7 +242,7 @@ func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
 	return &Phys{
 		Sink:   NewSink(stream, framer),
 		ps:     gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
-		rxpipe: pipe.New(numBufferedPackets),
+		rxpipe: pipe.New(),
 	}
 }
 

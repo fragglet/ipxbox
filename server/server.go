@@ -135,7 +135,7 @@ func (s *Server) newClient(ctx context.Context, protocol Protocol, addr *net.UDP
 	now := time.Now()
 	c := &client{
 		s:               s,
-		rxpipe:          pipe.New(1),
+		rxpipe:          pipe.New(),
 		addr:            addr,
 		lastReceiveTime: now,
 	}

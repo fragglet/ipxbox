@@ -151,7 +151,7 @@ func Dial(ctx context.Context, addr, password string) (ipx.ReadWriteCloser, erro
 	}
 	c := &client{
 		inner:  udp,
-		rxpipe: pipe.New(1),
+		rxpipe: pipe.New(),
 	}
 	if err := c.handshakeConnect(ctx, password); err != nil {
 		udp.Close()

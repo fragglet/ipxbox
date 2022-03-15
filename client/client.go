@@ -36,7 +36,7 @@ func Dial(addr string) (*Client, error) {
 	}
 	c := &Client{
 		conn:   conn,
-		rxpipe: pipe.New(1),
+		rxpipe: pipe.New(),
 	}
 	go c.recvLoop()
 	return c, nil

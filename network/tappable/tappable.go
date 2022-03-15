@@ -11,13 +11,6 @@ import (
 	"github.com/fragglet/ipxbox/network/pipe"
 )
 
-const (
-	// numBufferedPackets is the number of packets to buffer per
-	// tap before we start dropping data. Tap readers should be
-	// fast enough to ensure this never happens.
-	numBufferedPackets = 16
-)
-
 var (
 	_ = (network.Network)(&TappableNetwork{})
 	_ = (network.Node)(&node{})
@@ -43,7 +36,7 @@ func (n *TappableNetwork) NewTap() ipx.ReadCloser {
 	defer n.mu.Unlock()
 	tap := &tap{
 		net:    n,
-		rxpipe: pipe.New(numBufferedPackets),
+		rxpipe: pipe.New(),
 		tapID:  n.nextTapID,
 	}
 	n.nextTapID++

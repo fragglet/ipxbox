@@ -14,15 +14,6 @@ import (
 	"github.com/fragglet/ipxbox/network/pipe"
 )
 
-const (
-	// numBufferedPackets is the number of packets that we will
-	// buffer per receive pipe before writes start to fail. This
-	// is deliberately set fairly small because readers ought
-	// to be fast enough that the buffers never become full and
-	// we don't want buffer bloat.
-	numBufferedPackets = 4
-)
-
 type Network struct {
 	mu         sync.RWMutex
 	nodesByID  map[int]*node
@@ -74,7 +65,7 @@ func (n *node) GetProperty(x interface{}) bool {
 func (n *Network) NewNode() network.Node {
 	node := &node{
 		net:    n,
-		rxpipe: pipe.New(numBufferedPackets),
+		rxpipe: pipe.New(),
 	}
 	n.mu.Lock()
 	node.nodeID = n.nextNodeID
