@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/gopacket/pcap"
 	"github.com/songgao/water"
+	"strings"
 )
 
 var framers = map[string]Framer{
@@ -28,13 +29,31 @@ func RegisterFlags() *Flags {
 	return f
 }
 
+func listNetDevices() (string, error) {
+	ifaces, err := pcap.FindAllDevs()
+	if err != nil {
+		return "", err
+	}
+	result := []string{}
+	for _, iface := range ifaces {
+		result = append(result, fmt.Sprintf("%q", iface.Name))
+	}
+	return strings.Join(result, ", "), nil
+}
+
 func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error) {
 	if *f.EnableTap {
 		return NewTap(water.Config{})
 	} else if *f.PcapDevice == "" {
 		return nil, nil
 	}
-	// TODO: List
+	if *f.PcapDevice == "list" {
+		devices, err := listNetDevices()
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("valid network devices are: %v", devices)
+	}
 	handle, err := pcap.OpenLive(*f.PcapDevice, 1500, true, pcap.BlockForever)
 	if err != nil {
 		return nil, err
