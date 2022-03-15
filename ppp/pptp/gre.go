@@ -13,7 +13,7 @@ import (
 
 const (
 	greProtocol   = 47
-	recvQueueSize = 4
+	recvQueueSize = 16
 )
 
 var (
