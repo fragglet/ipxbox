@@ -174,6 +174,7 @@ func (s *Server) processPacket(ctx context.Context, packetBytes []byte, addr *ne
 		// Is this a supported protocol?
 		protocol, ok := s.findProtocol(packet)
 		if !ok {
+			s.mu.Unlock()
 			return
 		}
 
