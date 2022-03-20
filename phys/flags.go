@@ -58,6 +58,9 @@ func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error)
 	if err != nil {
 		return nil, err
 	}
+	// Only deliver received packets, otherwise packets *we* inject into
+	// the network will get delivered back to us.
+	handle.SetDirection(pcap.DirectionIn)
 	// As an optimization we set a filter to only deliver IPX packets
 	// because they're all we care about. However, when ipxpkt routing is
 	// enabled we want all Ethernet frames.
