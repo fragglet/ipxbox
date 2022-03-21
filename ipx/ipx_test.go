@@ -172,7 +172,7 @@ func TestCopyPackets(t *testing.T) {
 		if !reflect.DeepEqual(x.sourcePackets, y.recvPackets) {
 			t.Errorf("not all packets copied from x to y: want %+v, got %+v", x.sourcePackets, y.recvPackets)
 		}
-		if !reflect.DeepEqual(x.sourcePackets, y.recvPackets) {
+		if !reflect.DeepEqual(y.sourcePackets, x.recvPackets) {
 			t.Errorf("not all packets copied from y to x: want %+v, got %+v", y.sourcePackets, x.recvPackets)
 		}
 	})
@@ -212,7 +212,7 @@ func TestCopyPackets(t *testing.T) {
 		if !reflect.DeepEqual(x.sourcePackets, y.recvPackets) {
 			t.Errorf("not all packets copied from x to y: want %+v, got %+v", x.sourcePackets, y.recvPackets)
 		}
-		if !reflect.DeepEqual(x.sourcePackets, y.recvPackets) {
+		if !reflect.DeepEqual(y.sourcePackets, x.recvPackets) {
 			t.Errorf("not all packets copied from y to x: want %+v, got %+v", y.sourcePackets, x.recvPackets)
 		}
 	})
