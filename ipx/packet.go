@@ -3,6 +3,7 @@ package ipx
 import (
 	"context"
 	"encoding"
+	"errors"
 	"io"
 
 	"golang.org/x/sync/errgroup"
@@ -17,7 +18,8 @@ var (
 // IPX packets can be read.
 type Reader interface {
 	// ReadPacket returns an IPX packet read from this source or an
-	// error. If no packet is available yet it will block.
+	// error. If no packet is available yet it will block. An error
+	// of io.EOF indicates that no more packets are available to read.
 	ReadPacket(context.Context) (*Packet, error)
 }
 
@@ -74,11 +76,14 @@ func (p *Packet) UnmarshalBinary(packet []byte) error {
 }
 
 // CopyPackets copies packets from in to out until an error occurs whil
-// reading or the context is cancelled.
+// reading or the context is cancelled. If the input returns EOF then
+// CopyPackets returns nil to indicate copying completed successfully.
 func CopyPackets(ctx context.Context, in Reader, out Writer) error {
 	for {
 		packet, err := in.ReadPacket(ctx)
-		if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		} else if err != nil {
 			return err
 		}
 		out.WritePacket(packet)
