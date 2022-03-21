@@ -4,7 +4,6 @@ package ipxswitch
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -30,10 +29,6 @@ type node struct {
 var (
 	_ = (network.Network)(&Network{})
 	_ = (network.Node)(&node{})
-
-	// UnknownNodeError is returned by Network.WritePacket() if the
-	// destination MAC address is not associated with any known node.
-	UnknownNodeError = errors.New("unknown destination address")
 )
 
 // Close removes the node from its parent network; future calls to ReadPacket()
