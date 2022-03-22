@@ -149,9 +149,10 @@ func main() {
 	}
 	if *uplinkPassword != "" {
 		protocols = append(protocols, &uplink.Protocol{
-			Logger:   logger,
-			Network:  uplinkable,
-			Password: *uplinkPassword,
+			Logger:        logger,
+			Network:       uplinkable,
+			Password:      *uplinkPassword,
+			KeepaliveTime: 5 * time.Second,
 		})
 	}
 	s, err := server.New(fmt.Sprintf(":%d", *port), &server.Config{

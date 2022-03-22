@@ -104,6 +104,9 @@ func (c *client) sendUntilResponse(ctx context.Context, msg *uplink.Message) (*u
 		if err := result.Unmarshal(packet.Payload); err != nil {
 			return nil, err
 		}
+		if result.Type == uplink.MessageTypeKeepalive {
+			continue
+		}
 		return result, nil
 	}
 }

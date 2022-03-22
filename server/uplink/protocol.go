@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/network"
@@ -67,6 +68,11 @@ const (
 	// {"message-type": "submit-solution-rejected"}
 	MessageTypeSubmitSolutionRejected = "submit-solution-rejected"
 
+	// MesssageTypeKeepalive is the uplink message type sent by the server
+	// when no traffic has been detected recently. It prevents any NAT
+	// gateway in the middle from timing out the connection.
+	MessageTypeKeepalive = "keepalive"
+
 	// MessageTypeClose is the uplink message type from the client to
 	// the server to close the connection and disconnect.
 	// {"message-type": "close-connection"}
@@ -105,6 +111,13 @@ type Protocol struct {
 
 	// Clients *must* supply a password. Uplink is always authenticated.
 	Password string
+
+	// If non-zero, always send at least one packet every few seconds to
+	// keep the UDP connection open. Some NAT networks and firewalls can be
+	// very aggressive about closing off the ability for clients to receive
+	// packets on particular ports if nothing is received for a while.
+	// This controls the time for keepalives.
+	KeepaliveTime time.Duration
 }
 
 func (p *Protocol) log(format string, args ...interface{}) {
@@ -140,7 +153,7 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 	if _, err := rand.Read(c.challenge); err != nil {
 		return err
 	}
-	// TODO: Send keepalives to client
+	go c.sendKeepalives(ctx)
 
 	node := p.Network.NewNode()
 	defer func() {
@@ -163,6 +176,26 @@ type client struct {
 	challenge     []byte
 	mu            sync.Mutex
 	addr          net.Addr
+	lastSendTime  time.Time
+}
+
+func (c *client) sendKeepalives(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(c.p.KeepaliveTime / 2):
+		}
+		c.mu.Lock()
+		idleTime := time.Since(c.lastSendTime)
+		isAuthenticated := c.authenticated
+		c.mu.Unlock()
+		if isAuthenticated && idleTime > c.p.KeepaliveTime {
+			c.sendUplinkMessage(&Message{
+				Type: MessageTypeKeepalive,
+			})
+		}
+	}
 }
 
 func SolveChallenge(side, password string, challenge []byte) []byte {
@@ -205,6 +238,8 @@ func (c *client) authenticate(msg *Message) error {
 	if !c.authenticated {
 		c.p.log("uplink from %s authenticated successfully", c.addr)
 		c.authenticated = true
+		// Don't send a keepalive immediately.
+		c.lastSendTime = time.Now()
 	}
 	c.mu.Unlock()
 	return c.sendUplinkMessage(&Message{
@@ -262,6 +297,9 @@ func (c *client) WritePacket(packet *ipx.Packet) error {
 	if !c.isAuthenticated() {
 		return nil
 	}
+	c.mu.Lock()
+	c.lastSendTime = time.Now()
+	c.mu.Unlock()
 	return c.inner.WritePacket(packet)
 }
 
