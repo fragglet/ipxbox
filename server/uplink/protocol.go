@@ -68,7 +68,7 @@ const (
 	// {"message-type": "submit-solution-rejected"}
 	MessageTypeSubmitSolutionRejected = "submit-solution-rejected"
 
-	// MesssageTypeKeepalive is the uplink message type sent by the server
+	// MessageTypeKeepalive is the uplink message type sent by the server
 	// when no traffic has been detected recently. It prevents any NAT
 	// gateway in the middle from timing out the connection.
 	MessageTypeKeepalive = "keepalive"
