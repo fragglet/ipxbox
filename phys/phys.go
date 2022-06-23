@@ -18,6 +18,12 @@ import (
 	"github.com/google/gopacket/pcapgo"
 )
 
+// loopbackDetectValue is a special magic value that the TransControl
+// field is set to when IPX packets are written to a physical interface.
+// We use this to detect packets if they have been looped back and
+// captured again due to bug #18, and discard them.
+const loopbackDetectValue = 127
+
 var (
 	_ = (ipx.WriteCloser)(&Sink{})
 	_ = (ipx.ReadWriteCloser)(&Phys{})
@@ -74,7 +80,13 @@ func (s *Sink) WritePacket(packet *ipx.Packet) error {
 	dest := net.HardwareAddr(packet.Header.Dest.Addr[:])
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
-	layers, err := s.framer.Frame(dest, packet)
+	modifiedHeader := packet.Header
+	modifiedHeader.Checksum = 0
+	modifiedHeader.TransControl = loopbackDetectValue
+	layers, err := s.framer.Frame(dest, &ipx.Packet{
+		Header: modifiedHeader,
+		Payload: packet.Payload,
+	})
 	if err != nil {
 		return err
 	}
@@ -135,7 +147,10 @@ func (p *Phys) Run() error {
 			if err := ipxpkt.UnmarshalBinary(payload); err != nil {
 				return err
 			}
-			p.rxpipe.WritePacket(ipxpkt)
+			// We discard looped-back packets (bug #18):
+			if ipxpkt.Header.TransControl != loopbackDetectValue {
+				p.rxpipe.WritePacket(ipxpkt)
+			}
 		} else {
 			p.mu.Lock()
 			if p.nonIPX != nil {
