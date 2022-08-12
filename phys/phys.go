@@ -84,7 +84,7 @@ func (s *Sink) WritePacket(packet *ipx.Packet) error {
 	modifiedHeader.Checksum = 0
 	modifiedHeader.TransControl = loopbackDetectValue
 	layers, err := s.framer.Frame(dest, &ipx.Packet{
-		Header: modifiedHeader,
+		Header:  modifiedHeader,
 		Payload: packet.Payload,
 	})
 	if err != nil {

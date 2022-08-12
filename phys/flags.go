@@ -8,13 +8,6 @@ import (
 	"strings"
 )
 
-var framers = map[string]Framer{
-	"802.2":    Framer802_2,
-	"802.3raw": Framer802_3Raw,
-	"snap":     FramerSNAP,
-	"eth-ii":   FramerEthernetII,
-}
-
 type Flags struct {
 	PcapDevice      *string
 	EnableTap       *bool
@@ -73,16 +66,18 @@ func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error)
 }
 
 func (f *Flags) makeFramer() (Framer, error) {
-	if *f.EthernetFraming == "auto" {
+	framerName := *f.EthernetFraming
+	if framerName == "auto" {
 		return &automaticFramer{
 			fallback: Framer802_2,
 		}, nil
 	}
-	framer, ok := framers[*f.EthernetFraming]
-	if !ok {
-		return nil, fmt.Errorf("unknown Ethernet framing %q", *f.EthernetFraming)
+	for _, framer := range allFramers {
+		if framerName == framer.Name() {
+			return framer, nil
+		}
 	}
-	return framer, nil
+	return nil, fmt.Errorf("unknown Ethernet framing %q", framerName)
 }
 
 func (f *Flags) MakePhys(captureNonIPX bool) (*Phys, error) {

@@ -12,6 +12,7 @@ import (
 type Framer interface {
 	Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error)
 	Unframe(eth *layers.Ethernet, layers []gopacket.Layer) ([]byte, bool)
+	Name() string
 }
 
 const (
@@ -92,6 +93,8 @@ func (framer802_2) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer) ([
 	return llc.LayerPayload(), true
 }
 
+func (framer802_2) Name() string { return "802.2" }
+
 type framer802_3Raw struct{}
 
 func (framer802_3Raw) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
@@ -131,6 +134,8 @@ func (framer802_3Raw) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer)
 	// interpreted correctly.
 	return eth.LayerPayload(), true
 }
+
+func (framer802_3Raw) Name() string { return "802.3raw" }
 
 type framerSNAP struct{}
 
@@ -177,6 +182,8 @@ func (framerSNAP) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer) ([]
 	return snap.LayerPayload(), true
 }
 
+func (framerSNAP) Name() string { return "snap" }
+
 type framerEthernetII struct{}
 
 func (framerEthernetII) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
@@ -201,6 +208,8 @@ func (framerEthernetII) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Laye
 	// ETHERNET_II framing type.
 	return eth.LayerPayload(), true
 }
+
+func (framerEthernetII) Name() string { return "eth-ii" }
 
 // automaticFramer picks a framer based on the first IPX packet it receives.
 type automaticFramer struct {
@@ -232,6 +241,7 @@ func (f *automaticFramer) detectedFramer(detected Framer, payload []byte) {
 			return
 		}
 		if ipxpkt.Header.TransControl != loopbackDetectValue {
+			// TODO: Write detected.Name() to log file
 			f.mu.Lock()
 			f.framer = detected
 			f.mu.Unlock()
@@ -249,3 +259,5 @@ func (f *automaticFramer) Unframe(eth *layers.Ethernet, nextLayers []gopacket.La
 	}
 	return nil, false
 }
+
+func (f *automaticFramer) Name() string { return "auto" }
