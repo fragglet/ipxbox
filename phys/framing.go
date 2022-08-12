@@ -27,7 +27,7 @@ var (
 	FramerSNAP       = framerSNAP{}
 	FramerEthernetII = framerEthernetII{}
 
-	allFramers = []Framer{framer802_2{}, framerEthernetII{}, framer802_3Raw{}, framerSNAP{}}
+	allFramers = []Framer{Framer802_2, Framer802_3Raw, FramerEthernetII, FramerSNAP}
 )
 
 // Unframe parses the layers in the given packet to locate and extract
@@ -218,14 +218,24 @@ func (f *automaticFramer) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]go
 	return framer.Frame(dest, packet)
 }
 
-func (f *automaticFramer) detectedFramer(detected Framer) {
+func (f *automaticFramer) detectedFramer(detected Framer, payload []byte) {
 	f.mu.RLock()
 	framer := f.framer
 	f.mu.RUnlock()
 	if framer == nil {
-		f.mu.Lock()
-		f.framer = detected
-		f.mu.Unlock()
+		// We received a packet and know what framing it used. But
+		// before we use this as our autodetected framing, make sure
+		// that this isn't a looped-back packet and really came from
+		// another machine on the network.
+		ipxpkt := &ipx.Packet{}
+		if err := ipxpkt.UnmarshalBinary(payload); err != nil {
+			return
+		}
+		if ipxpkt.Header.TransControl != loopbackDetectValue {
+			f.mu.Lock()
+			f.framer = detected
+			f.mu.Unlock()
+		}
 	}
 }
 
@@ -233,7 +243,7 @@ func (f *automaticFramer) Unframe(eth *layers.Ethernet, nextLayers []gopacket.La
 	for _, framer := range allFramers {
 		result, ok := framer.Unframe(eth, nextLayers)
 		if ok {
-			f.detectedFramer(framer)
+			f.detectedFramer(framer, result)
 			return result, true
 		}
 	}
