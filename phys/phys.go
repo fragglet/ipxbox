@@ -141,7 +141,7 @@ func (p *Phys) Run() error {
 		if err != nil {
 			return err
 		}
-		payload, ok := GetIPXPayload(pkt)
+		payload, ok := Unframe(pkt, p.Sink.framer)
 		if ok {
 			ipxpkt := &ipx.Packet{}
 			if err := ipxpkt.UnmarshalBinary(payload); err != nil {

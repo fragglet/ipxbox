@@ -2,6 +2,7 @@ package phys
 
 import (
 	"net"
+	"sync"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/google/gopacket"
@@ -29,9 +30,9 @@ var (
 	allFramers = []Framer{framer802_2{}, framerEthernetII{}, framer802_3Raw{}, framerSNAP{}}
 )
 
-// GetIPXPayload parses the layers in the given packet to locate and extract
+// Unframe parses the layers in the given packet to locate and extract
 // an IPX payload.
-func GetIPXPayload(pkt gopacket.Packet) ([]byte, bool) {
+func Unframe(pkt gopacket.Packet, framer Framer) ([]byte, bool) {
 	var (
 		eth        *layers.Ethernet
 		nextLayers []gopacket.Layer
@@ -49,12 +50,7 @@ func GetIPXPayload(pkt gopacket.Packet) ([]byte, bool) {
 	if eth == nil {
 		return nil, false
 	}
-	for _, framer := range allFramers {
-		if result, ok := framer.Unframe(eth, nextLayers); ok {
-			return result, true
-		}
-	}
-	return nil, false
+	return framer.Unframe(eth, nextLayers)
 }
 
 type framer802_2 struct{}
@@ -95,7 +91,6 @@ func (framer802_2) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer) ([
 	// https://en.wikipedia.org/wiki/IEEE_802.2
 	return llc.LayerPayload(), true
 }
-
 
 type framer802_3Raw struct{}
 
@@ -205,4 +200,42 @@ func (framerEthernetII) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Laye
 	}
 	// ETHERNET_II framing type.
 	return eth.LayerPayload(), true
+}
+
+// automaticFramer picks a framer based on the first IPX packet it receives.
+type automaticFramer struct {
+	framer, fallback Framer
+	mu               sync.RWMutex
+}
+
+func (f *automaticFramer) Frame(dest net.HardwareAddr, packet *ipx.Packet) ([]gopacket.SerializableLayer, error) {
+	f.mu.RLock()
+	framer := f.framer
+	if framer == nil {
+		framer = f.fallback
+	}
+	f.mu.RUnlock()
+	return framer.Frame(dest, packet)
+}
+
+func (f *automaticFramer) detectedFramer(detected Framer) {
+	f.mu.RLock()
+	framer := f.framer
+	f.mu.RUnlock()
+	if framer == nil {
+		f.mu.Lock()
+		f.framer = detected
+		f.mu.Unlock()
+	}
+}
+
+func (f *automaticFramer) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer) ([]byte, bool) {
+	for _, framer := range allFramers {
+		result, ok := framer.Unframe(eth, nextLayers)
+		if ok {
+			f.detectedFramer(framer)
+			return result, true
+		}
+	}
+	return nil, false
 }
