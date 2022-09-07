@@ -14,6 +14,8 @@ Internet  using the VPN software that shipped with the operating system
 ([demo video](https://www.youtube.com/watch?v=ut37z6EE5Hc);
 see [PPTP-HOWTO](PPTP-HOWTO.md) for more information).
 
+* Uplink functionality for bridging a network to a remote ipxbox server.
+
 * Support for the `ipxpkt.com` packet driver protocol, allowing
 TCP/IP-over IPX; software that uses the packet driver interface can
 more easily be used in DOSbox
