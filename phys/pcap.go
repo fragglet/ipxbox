@@ -22,6 +22,9 @@ func listNetDevices() (string, error) {
 }
 
 func openPcapHandle(f *Flags, captureNonIPX bool) (DuplexEthernetStream, error) {
+	if *f.PcapDevice == "" {
+		return nil, nil
+	}
 	if *f.PcapDevice == "list" {
 		devices, err := listNetDevices()
 		if err != nil {

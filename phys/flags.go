@@ -23,8 +23,6 @@ func RegisterFlags() *Flags {
 func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error) {
 	if *f.EnableTap {
 		return NewTap(water.Config{})
-	} else if *f.PcapDevice == "" {
-		return nil, nil
 	}
 	return openPcapHandle(f, captureNonIPX)
 }
