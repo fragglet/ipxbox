@@ -14,7 +14,7 @@ type Flags struct {
 
 func RegisterFlags() *Flags {
 	f := &Flags{}
-	f.PcapDevice = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
+	maybeAddPcapDeviceFlag(f)
 	f.EnableTap = flag.Bool("enable_tap", false, "Bridge the server to a tap device.")
 	f.EthernetFraming = flag.String("ethernet_framing", "auto", `Framing to use when sending Ethernet packets. Valid values are "auto", "802.2", "802.3raw", "snap" and "eth-ii".`)
 	return f
