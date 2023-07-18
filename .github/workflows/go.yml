@@ -20,6 +20,14 @@ jobs:
     - name: Build
       run: go build -v ipxbox.go
 
+    - name: Test
+      run: |
+        go test network/pipe/*.go
+        go test network/filter/*.go
+        go test client/dosbox/*.go
+        go test client/uplink/*.go
+        go test ipx/*.go
+
   crosscompile:
     strategy:
       matrix:
