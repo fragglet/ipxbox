@@ -48,6 +48,15 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         GOOS: ${{ matrix.goos }}
 
+    # Github packages artifacts in .zip files which don't preserve
+    # permissions, so we must make an inner tar. Sigh.
+    - name: Tar artifacts
+      run: |
+        mv artifacts artifacts2
+        mkdir artifacts
+        tar -C artifacts2 -czf artifacts/contents.tar.gz .
+      if: ${{ matrix.goos != 'windows' }}
+
     - name: Upload build
       uses: actions/upload-artifact@v1
       with:
