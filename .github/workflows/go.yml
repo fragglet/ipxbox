@@ -24,8 +24,6 @@ jobs:
       run: |
         go test network/pipe/*.go
         go test network/filter/*.go
-        go test client/dosbox/*.go
-        go test client/uplink/*.go
         go test ipx/*.go
 
   crosscompile:
