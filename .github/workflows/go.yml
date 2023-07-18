@@ -11,7 +11,7 @@ jobs:
 
     - name: Install pcap
       run: sudo apt install libpcap-dev
-  
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
@@ -19,3 +19,24 @@ jobs:
 
     - name: Build
       run: go build -v ipxbox.go
+
+  crosscompile:
+    strategy:
+      matrix:
+        goarch: [386, amd64, arm64]
+        goos: [darwin, freebsd, linux, windows]
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    - name: Build
+      run: go build -tags nopcap -v ipxbox.go
+      env:
+        GOARCH: ${{ matrix.goarch }}
+        GOOS: ${{ matrix.goos }}
