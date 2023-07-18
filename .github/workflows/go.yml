@@ -39,7 +39,18 @@ jobs:
         go-version: '1.20'
 
     - name: Build
-      run: go build -tags nopcap -v ipxbox.go
+      run: |
+        mkdir artifacts
+        cd artifacts
+        go build -tags nopcap -v ../ipxbox.go
+        go build -tags nopcap -v ../standalone/ipxbox_uplink.go
       env:
         GOARCH: ${{ matrix.goarch }}
         GOOS: ${{ matrix.goos }}
+
+    - name: Upload build
+      uses: actions/upload-artifact@v1
+      with:
+        path: "artifacts"
+        name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
+
