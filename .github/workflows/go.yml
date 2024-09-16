@@ -66,7 +66,7 @@ jobs:
       if: ${{ matrix.goos != 'windows' }}
 
     - name: Upload build
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v4
       with:
         path: "artifacts"
         name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
