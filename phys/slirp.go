@@ -9,11 +9,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"github.com/google/gopacket"
-)
+	"path/filepath"
 
-const (
-	socketPath = "/tmp/slirp-socket"
+	"github.com/google/gopacket"
 )
 
 var (
@@ -23,6 +21,7 @@ var (
 type SlirpProcess struct {
 	addr *net.UnixAddr
 	listener *net.UnixListener
+	socketDir string
 }
 
 func (c *SlirpProcess) runConnection(helperPath string, conn *net.UnixConn) {
@@ -60,6 +59,11 @@ func (c *SlirpProcess) Start() error {
 	if err != nil {
 		return err
 	}
+	c.socketDir, err = os.MkdirTemp("", "ipxbox-libslirp-socket")
+	if err != nil {
+		return err
+	}
+	socketPath := filepath.Join(c.socketDir, "socket")
 	c.addr, err = net.ResolveUnixAddr("unix", socketPath)
 	if err != nil {
 		return err
@@ -85,6 +89,10 @@ func (c *SlirpProcess) Start() error {
 
 func (c *SlirpProcess) Close() error {
 	return c.listener.Close()
+}
+
+func (c *SlirpProcess) CleanupSocketFiles() {
+	os.RemoveAll(c.socketDir)
 }
 
 type SlirpConnection struct {
@@ -122,5 +130,11 @@ func MakeSlirp() (*SlirpConnection, error) {
 	if err := proc.Start(); err != nil {
 		return nil, err
 	}
-	return proc.Connect()
+	conn, err := proc.Connect()
+	proc.CleanupSocketFiles()
+	if err != nil {
+		proc.Close()
+		return nil, err
+	}
+	return conn, nil
 }
