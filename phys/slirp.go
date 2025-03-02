@@ -19,8 +19,8 @@ var (
 )
 
 type SlirpProcess struct {
-	addr *net.UnixAddr
-	listener *net.UnixListener
+	addr      *net.UnixAddr
+	listener  *net.UnixListener
 	socketDir string
 }
 
@@ -33,7 +33,7 @@ func (c *SlirpProcess) runConnection(helperPath string, conn *net.UnixConn) {
 	args := []string{
 		helperPath,
 		"--exit-with-parent",
-		"--fd=3",  // See Files[] array below
+		"--fd=3", // See Files[] array below
 	}
 	p, err := os.StartProcess(helperPath, args, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr, connFile},
@@ -97,7 +97,7 @@ func (c *SlirpProcess) CleanupSocketFiles() {
 
 type SlirpConnection struct {
 	conn *net.UnixConn
-	buf [1500]byte
+	buf  [1500]byte
 }
 
 func (c *SlirpProcess) Connect() (*SlirpConnection, error) {
