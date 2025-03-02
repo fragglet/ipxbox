@@ -116,3 +116,11 @@ func (c *SlirpConnection) WritePacketData(buf []byte) error {
 func (c *SlirpConnection) Close() {
 	c.conn.Close()
 }
+
+func MakeSlirp() (*SlirpConnection, error) {
+	var proc SlirpProcess
+	if err := proc.Start(); err != nil {
+		return nil, err
+	}
+	return proc.Connect()
+}

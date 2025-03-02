@@ -126,10 +126,21 @@ func main() {
 		port := uplinkable.NewNode()
 		go physLink.Run()
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
-		if *enableIpxpkt {
-			r := ipxpkt.NewRouter(net.NewNode())
-			go phys.CopyFrames(r, physLink.NonIPX())
+	}
+	if *enableIpxpkt {
+		r := ipxpkt.NewRouter(net.NewNode())
+		var tapConn phys.DuplexEthernetStream
+		if physLink != nil {
+			tapConn = physLink.NonIPX()
+			log.Printf("Using physical network tap for ipxpkt router")
+		} else {
+			tapConn, err = phys.MakeSlirp()
+			if err != nil {
+				log.Fatalf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
+			}
+			log.Printf("Using Slirp subprocess for ipxpkt router")
 		}
+		go phys.CopyFrames(r, tapConn)
 	}
 	addQuakeProxies(ctx, net)
 	if *enablePPTP {
