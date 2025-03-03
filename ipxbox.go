@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/ipxpkt"
+	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/qproxy"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
@@ -20,7 +21,6 @@ import (
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
 	"github.com/fragglet/ipxbox/ppp/pptp"
-	"github.com/fragglet/ipxbox/qproxy"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/server/dosbox"
 	"github.com/fragglet/ipxbox/server/uplink"
@@ -37,24 +37,9 @@ var (
 	allowNetBIOS   = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableIpxpkt   = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
 	enableSyslog   = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
-	quakeServers   = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
 	enablePPTP     = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
 )
-
-func addQuakeProxies(ctx context.Context, net network.Network) {
-	if *quakeServers == "" {
-		return
-	}
-	for _, addr := range strings.Split(*quakeServers, ",") {
-		node := network.MustMakeNode(net)
-		p := qproxy.New(&qproxy.Config{
-			Address:     addr,
-			IdleTimeout: *clientTimeout,
-		}, node)
-		go p.Run(ctx)
-	}
-}
 
 func makePcapWriter() *pcapgo.Writer {
 	f, err := os.Create(*dumpPackets)
@@ -103,6 +88,14 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 }
 
 func main() {
+	modules := []module.Module{
+		qproxy.Module,
+	}
+
+	for _, m := range modules {
+		m.Initialize()
+	}
+
 	physFlags := phys.RegisterFlags()
 	flag.Parse()
 
@@ -144,13 +137,18 @@ func main() {
 		}
 		go phys.CopyFrames(r, tapConn)
 	}
-	addQuakeProxies(ctx, net)
 	if *enablePPTP {
 		pptps, err := pptp.NewServer(net)
 		if err != nil {
 			log.Fatalf("failed to start PPTP server: %v", err)
 		}
 		go pptps.Run(ctx)
+	}
+
+	for _, m := range modules {
+		if m.IsEnabled() {
+			m.Start(ctx, net)
+		}
 	}
 
 	protocols := []server.Protocol{
