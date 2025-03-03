@@ -5,7 +5,6 @@ import (
 	"flag"
 	"log"
 
-	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/phys"
@@ -29,7 +28,7 @@ func (m *mod) IsEnabled() bool {
 
 func (m *mod) Start(ctx context.Context, net network.Network) {
 	port := network.MustMakeNode(net)
-	r := ipxpkt.NewRouter(port)
+	r := NewRouter(port)
 	// TODO: Add back option for bridge to physical network
 	tapConn, err := phys.MakeSlirp()
 	if err != nil {
