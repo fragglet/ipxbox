@@ -172,8 +172,8 @@ type FakeNetwork struct {
 	Address ipx.Addr
 }
 
-func (n *FakeNetwork) NewNode() network.Node {
-	return n
+func (n *FakeNetwork) NewNode() (network.Node, error) {
+	return n, nil
 }
 
 func (n *FakeNetwork) ReadPacket(ctx context.Context) (*ipx.Packet, error) {

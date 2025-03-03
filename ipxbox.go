@@ -42,15 +42,24 @@ var (
 	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
 )
 
+func mustMakeNode(net network.Network) network.Node {
+	node, err := net.NewNode()
+	if err != nil {
+		log.Fatalf("failed to create network node: %v", err)
+	}
+	return node
+}
+
 func addQuakeProxies(ctx context.Context, net network.Network) {
 	if *quakeServers == "" {
 		return
 	}
 	for _, addr := range strings.Split(*quakeServers, ",") {
+		node := mustMakeNode(net)
 		p := qproxy.New(&qproxy.Config{
 			Address:     addr,
 			IdleTimeout: *clientTimeout,
-		}, net.NewNode())
+		}, node)
 		go p.Run(ctx)
 	}
 }
@@ -123,12 +132,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to set up physical network: %v", err)
 	} else if physLink != nil {
-		port := uplinkable.NewNode()
+		port := mustMakeNode(uplinkable)
 		go physLink.Run()
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
 	}
 	if *enableIpxpkt {
-		r := ipxpkt.NewRouter(net.NewNode())
+		port := mustMakeNode(net)
+		r := ipxpkt.NewRouter(port)
 		var tapConn phys.DuplexEthernetStream
 		if physLink != nil {
 			tapConn = physLink.NonIPX()

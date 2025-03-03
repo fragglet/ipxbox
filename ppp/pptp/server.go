@@ -121,7 +121,12 @@ func (c *Connection) startPPPSession(ctx context.Context, sendCallID uint16) {
 		c.conn.Close()
 		return
 	}
-	node := c.s.n.NewNode()
+	node, err := c.s.n.NewNode()
+	if err != nil {
+		gre.Close()
+		c.conn.Close()
+		return
+	}
 	c.ppp = ppp.NewSession(gre, node)
 	go func() {
 		err := c.ppp.Run(ctx)

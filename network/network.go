@@ -7,8 +7,10 @@ import (
 
 // Network represents the concept of an IPX network.
 type Network interface {
-	// NewNode creates a new network node.
-	NewNode() Node
+	// NewNode creates a new network node. If the network is located on
+	// the end of a network link, this function may block for some time
+	// until it completes.
+	NewNode() (Node, error)
 }
 
 // Node represents a node attached to an IPX network.

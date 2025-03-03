@@ -67,7 +67,10 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 	if !isRegistrationPacket(packet) {
 		return nil
 	}
-	node := p.Network.NewNode()
+	node, err := p.Network.NewNode()
+	if err != nil {
+		return err
+	}
 	nodeAddr := network.NodeAddress(node)
 	defer func() {
 		node.Close()

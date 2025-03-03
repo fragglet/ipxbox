@@ -24,11 +24,15 @@ type TappableNetwork struct {
 	mu        sync.RWMutex
 }
 
-func (n *TappableNetwork) NewNode() network.Node {
+func (n *TappableNetwork) NewNode() (network.Node, error) {
+	inner, err := n.inner.NewNode()
+	if err != nil {
+		return nil, err
+	}
 	return &node{
 		net:   n,
-		inner: n.inner.NewNode(),
-	}
+		inner: inner,
+	}, nil
 }
 
 func (n *TappableNetwork) NewTap() ipx.ReadCloser {

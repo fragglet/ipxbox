@@ -57,7 +57,7 @@ func (n *node) GetProperty(x interface{}) bool {
 }
 
 // NewNode creates a new node on the network.
-func (n *Network) NewNode() network.Node {
+func (n *Network) NewNode() (network.Node, error) {
 	node := &node{
 		net:    n,
 		rxpipe: pipe.New(),
@@ -68,7 +68,7 @@ func (n *Network) NewNode() network.Node {
 	n.nodesByID[node.nodeID] = node
 	n.mu.Unlock()
 	n.table.AddPort(node.nodeID)
-	return node
+	return node, nil
 }
 
 func (n *Network) broadcastPacket(packet *ipx.Packet, src ipx.Writer) error {

@@ -35,13 +35,17 @@ type statsNetwork struct {
 	inner network.Network
 }
 
-func (n *statsNetwork) NewNode() network.Node {
+func (n *statsNetwork) NewNode() (network.Node, error) {
+	inner, err := n.inner.NewNode()
+	if err != nil {
+		return nil, err
+	}
 	return &node{
-		inner: n.inner.NewNode(),
+		inner: inner,
 		stats: Statistics{
 			connectTime: time.Now(),
 		},
-	}
+	}, nil
 }
 
 type node struct {

@@ -28,8 +28,12 @@ type addressableNetwork struct {
 	mu         sync.Mutex
 }
 
-func (n *addressableNetwork) NewNode() network.Node {
-	result := &node{net: n}
+func (n *addressableNetwork) NewNode() (network.Node, error) {
+	inner, err := n.inner.NewNode()
+	if err != nil {
+		return nil, err
+	}
+	result := &node{inner: inner, net: n}
 	// Repeatedly generate a new IPX address until we generate one that
 	// is not already in use. A prefix of 02:... gives a Unicast address
 	// that is locally administered.
@@ -46,8 +50,7 @@ func (n *addressableNetwork) NewNode() network.Node {
 		}
 		n.mu.Unlock()
 	}
-	result.inner = n.inner.NewNode()
-	return result
+	return result, nil
 }
 
 type node struct {
