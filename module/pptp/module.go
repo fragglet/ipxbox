@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"github.com/fragglet/ipxbox/module"
-	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/ppp/pptp"
 )
 
@@ -26,8 +25,8 @@ func (m *mod) IsEnabled() bool {
 	return *m.enabled
 }
 
-func (m *mod) Start(ctx context.Context, net network.Network) {
-	pptps, err := pptp.NewServer(net)
+func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+	pptps, err := pptp.NewServer(params.Network)
 	if err != nil {
 		log.Fatalf("failed to start PPTP server: %v", err)
 	}

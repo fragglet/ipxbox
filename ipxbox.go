@@ -122,9 +122,12 @@ func main() {
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
 	}
 
+	moduleParams := &module.Parameters{
+		Network: net,
+	}
 	for _, m := range modules {
 		if m.IsEnabled() {
-			m.Start(ctx, net)
+			m.Start(ctx, moduleParams)
 		}
 	}
 

@@ -30,9 +30,9 @@ func (m *mod) IsEnabled() bool {
 	return *m.quakeServers != ""
 }
 
-func (m *mod) Start(ctx context.Context, net network.Network) {
+func (m *mod) Start(ctx context.Context, params *module.Parameters) {
 	for _, addr := range strings.Split(*m.quakeServers, ",") {
-		node := network.MustMakeNode(net)
+		node := network.MustMakeNode(params.Network)
 		p := New(&Config{
 			Address:     addr,
 			IdleTimeout: clientTimeout,

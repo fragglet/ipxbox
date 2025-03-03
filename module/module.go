@@ -19,7 +19,12 @@ type Module interface {
 	// the command line flags it has registered.
 	IsEnabled() bool
 
-	// Start activates the module, using `net` as its connection to
-	// the internal IPX network.
-	Start(ctx context.Context, net network.Network)
+	// Start activates the module.
+	Start(ctx context.Context, params *Parameters)
+}
+
+type Parameters struct {
+	// Network is the connection to the IPX network that the module should
+	// use for communications.
+	Network network.Network
 }

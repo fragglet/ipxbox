@@ -26,8 +26,8 @@ func (m *mod) IsEnabled() bool {
 	return *m.enabled
 }
 
-func (m *mod) Start(ctx context.Context, net network.Network) {
-	port := network.MustMakeNode(net)
+func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+	port := network.MustMakeNode(params.Network)
 	r := NewRouter(port)
 	// TODO: Add back option for bridge to physical network
 	tapConn, err := phys.MakeSlirp()
