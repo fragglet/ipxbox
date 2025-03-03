@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
-	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/ipxpkt"
 	"github.com/fragglet/ipxbox/module/qproxy"
 	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/network"
@@ -35,7 +35,6 @@ var (
 	port           = flag.Int("port", 10000, "UDP port to listen on.")
 	clientTimeout  = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
 	allowNetBIOS   = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
-	enableIpxpkt   = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
 	enableSyslog   = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
 )
@@ -88,6 +87,7 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 
 func main() {
 	modules := []module.Module{
+		ipxpkt.Module,
 		qproxy.Module,
 		pptp.Module,
 	}
@@ -113,29 +113,13 @@ func main() {
 
 	net, uplinkable := makeNetwork(ctx)
 
-	physLink, err := physFlags.MakePhys(*enableIpxpkt)
+	physLink, err := physFlags.MakePhys(false)
 	if err != nil {
 		log.Fatalf("failed to set up physical network: %v", err)
 	} else if physLink != nil {
 		port := network.MustMakeNode(uplinkable)
 		go physLink.Run()
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
-	}
-	if *enableIpxpkt {
-		port := network.MustMakeNode(net)
-		r := ipxpkt.NewRouter(port)
-		var tapConn phys.DuplexEthernetStream
-		if physLink != nil {
-			tapConn = physLink.NonIPX()
-			log.Printf("Using physical network tap for ipxpkt router")
-		} else {
-			tapConn, err = phys.MakeSlirp()
-			if err != nil {
-				log.Fatalf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
-			}
-			log.Printf("Using Slirp subprocess for ipxpkt router")
-		}
-		go phys.CopyFrames(r, tapConn)
 	}
 
 	for _, m := range modules {

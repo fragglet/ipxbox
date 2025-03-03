@@ -8,7 +8,6 @@ import (
 
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/network"
-	"github.com/fragglet/ipxbox/qproxy"
 )
 
 const (
@@ -34,7 +33,7 @@ func (m *mod) IsEnabled() bool {
 func (m *mod) Start(ctx context.Context, net network.Network) {
 	for _, addr := range strings.Split(*m.quakeServers, ",") {
 		node := network.MustMakeNode(net)
-		p := qproxy.New(&qproxy.Config{
+		p := New(&Config{
 			Address:     addr,
 			IdleTimeout: clientTimeout,
 		}, node)
