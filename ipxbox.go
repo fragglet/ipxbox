@@ -4,14 +4,12 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/aggregate"
 	"github.com/fragglet/ipxbox/module/ipxpkt"
 	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/module/qproxy"
@@ -81,37 +79,23 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	return net, stats.Wrap(uplinkable)
 }
 
-func moduleRunner(ctx context.Context, m module.Module, params *module.Parameters) func() error {
-	return func() error {
-		m.Start(ctx, params)
-		return fmt.Errorf("module %+v terminated", m)
-	}
-}
-
-func runModules(ctx context.Context, modules []module.Module, params *module.Parameters) error {
-	eg, egctx := errgroup.WithContext(ctx)
-	for _, m := range modules {
-		if m.IsEnabled() {
-			eg.Go(moduleRunner(egctx, m, params))
-		}
-	}
-	return eg.Wait()
-}
-
 func main() {
-	modules := []module.Module{
+	mainmod := aggregate.MakeModule(
 		ipxpkt.Module,
 		qproxy.Module,
 		pptp.Module,
 		server.Module,
-	}
+	)
 
-	for _, m := range modules {
-		m.Initialize()
-	}
+	mainmod.Initialize()
 
 	physFlags := phys.RegisterFlags()
 	flag.Parse()
+
+	if !mainmod.IsEnabled() {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	ctx := context.Background()
 
@@ -136,7 +120,7 @@ func main() {
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
 	}
 
-	err = runModules(ctx, modules, &module.Parameters{
+	err = mainmod.Start(ctx, &module.Parameters{
 		Network:    net,
 		Uplinkable: uplinkable,
 		Logger:     logger,
