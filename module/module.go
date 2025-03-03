@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"log"
 
 	"github.com/fragglet/ipxbox/network"
 )
@@ -27,4 +28,11 @@ type Parameters struct {
 	// Network is the connection to the IPX network that the module should
 	// use for communications.
 	Network network.Network
+
+	// Uplinkable is an IPX network implementation that the module can use
+	// for direct connection into the network.
+	Uplinkable network.Network
+
+	// Logger should be used for reporting log messages.
+	Logger *log.Logger
 }

@@ -4,16 +4,15 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/module/ipxpkt"
-	"github.com/fragglet/ipxbox/module/qproxy"
 	"github.com/fragglet/ipxbox/module/pptp"
+	"github.com/fragglet/ipxbox/module/qproxy"
+	"github.com/fragglet/ipxbox/module/server"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
@@ -21,9 +20,6 @@ import (
 	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
-	"github.com/fragglet/ipxbox/server"
-	"github.com/fragglet/ipxbox/server/dosbox"
-	"github.com/fragglet/ipxbox/server/uplink"
 	"github.com/fragglet/ipxbox/syslog"
 
 	"github.com/google/gopacket/layers"
@@ -31,12 +27,9 @@ import (
 )
 
 var (
-	dumpPackets    = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
-	port           = flag.Int("port", 10000, "UDP port to listen on.")
-	clientTimeout  = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
-	allowNetBIOS   = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
-	enableSyslog   = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
-	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
+	dumpPackets  = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
+	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
+	enableSyslog = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 )
 
 func makePcapWriter() *pcapgo.Writer {
@@ -90,6 +83,7 @@ func main() {
 		ipxpkt.Module,
 		qproxy.Module,
 		pptp.Module,
+		server.Module,
 	}
 
 	for _, m := range modules {
@@ -123,36 +117,13 @@ func main() {
 	}
 
 	moduleParams := &module.Parameters{
-		Network: net,
+		Network:    net,
+		Uplinkable: uplinkable,
+		Logger:     logger,
 	}
 	for _, m := range modules {
 		if m.IsEnabled() {
 			m.Start(ctx, moduleParams)
 		}
 	}
-
-	protocols := []server.Protocol{
-		&dosbox.Protocol{
-			Logger:        logger,
-			Network:       net,
-			KeepaliveTime: 5 * time.Second,
-		},
-	}
-	if *uplinkPassword != "" {
-		protocols = append(protocols, &uplink.Protocol{
-			Logger:        logger,
-			Network:       uplinkable,
-			Password:      *uplinkPassword,
-			KeepaliveTime: 5 * time.Second,
-		})
-	}
-	s, err := server.New(fmt.Sprintf(":%d", *port), &server.Config{
-		Protocols:     protocols,
-		ClientTimeout: *clientTimeout,
-		Logger:        logger,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	s.Run(ctx)
 }
