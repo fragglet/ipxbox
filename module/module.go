@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"github.com/fragglet/ipxbox/network"
@@ -14,11 +15,6 @@ type Module interface {
 	// Initialize sets up the module, and in particular registers
 	// any flags that it might use.
 	Initialize()
-
-	// IsEnabled returns true if this module should be started. The
-	// module usually determines whether this is possible by checking
-	// the command line flags it has registered.
-	IsEnabled() bool
 
 	// Start activates the module.
 	Start(ctx context.Context, params *Parameters) error
@@ -36,3 +32,7 @@ type Parameters struct {
 	// Logger should be used for reporting log messages.
 	Logger *log.Logger
 }
+
+var (
+	NotNeeded = errors.New("module exited with nothing to do")
+)

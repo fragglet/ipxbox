@@ -92,11 +92,6 @@ func main() {
 	physFlags := phys.RegisterFlags()
 	flag.Parse()
 
-	if !mainmod.IsEnabled() {
-		flag.Usage()
-		os.Exit(1)
-	}
-
 	ctx := context.Background()
 
 	var logger *log.Logger

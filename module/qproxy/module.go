@@ -29,10 +29,6 @@ func (m *mod) Initialize() {
 	m.quakeServers = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
 }
 
-func (m *mod) IsEnabled() bool {
-	return *m.quakeServers != ""
-}
-
 func proxyRunner(ctx context.Context, p *Proxy, addr string) func() error {
 	return func() error {
 		p.Run(ctx)
@@ -41,6 +37,10 @@ func proxyRunner(ctx context.Context, p *Proxy, addr string) func() error {
 }
 
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
+	if *m.quakeServers == "" {
+		return module.NotNeeded
+	}
+
 	eg, egctx := errgroup.WithContext(ctx)
 	for _, addr := range strings.Split(*m.quakeServers, ",") {
 		node := network.MustMakeNode(params.Network)

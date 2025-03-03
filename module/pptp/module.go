@@ -21,11 +21,10 @@ func (m *mod) Initialize() {
 	m.enabled = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 }
 
-func (m *mod) IsEnabled() bool {
-	return *m.enabled
-}
-
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
+	if !*m.enabled {
+		return module.NotNeeded
+	}
 	pptps, err := pptp.NewServer(params.Network)
 	if err != nil {
 		return fmt.Errorf("failed to start PPTP server: %v", err)

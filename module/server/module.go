@@ -28,10 +28,6 @@ func (m *mod) Initialize() {
 	m.uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
 }
 
-func (m *mod) IsEnabled() bool {
-	return true
-}
-
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	protocols := []server.Protocol{
 		&dosbox.Protocol{

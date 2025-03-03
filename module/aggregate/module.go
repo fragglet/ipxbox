@@ -21,30 +21,28 @@ func (m *mod) Initialize() {
 	}
 }
 
-func (m *mod) IsEnabled() bool {
-	for _, submod := range m.modules {
-		if submod.IsEnabled() {
-			return true
-		}
-	}
-	return false
-}
-
 func moduleRunner(ctx context.Context, m module.Module, params *module.Parameters) func() error {
 	return func() error {
-		m.Start(ctx, params)
-		return fmt.Errorf("module %+v terminated", m)
+		err := m.Start(ctx, params)
+		if err == module.NotNeeded {
+			return nil
+		} else if err == nil {
+			err = fmt.Errorf("module %+v terminated", m)
+		}
+		return err
 	}
 }
 
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	eg, egctx := errgroup.WithContext(ctx)
 	for _, submod := range m.modules {
-		if submod.IsEnabled() {
-			eg.Go(moduleRunner(egctx, submod, params))
-		}
+		eg.Go(moduleRunner(egctx, submod, params))
 	}
-	return eg.Wait()
+	err := eg.Wait()
+	if err == nil {
+		return module.NotNeeded
+	}
+	return err
 }
 
 func MakeModule(modules ...module.Module) module.Module {
