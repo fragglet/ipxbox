@@ -13,6 +13,7 @@ import (
 	"github.com/fragglet/ipxbox/ipxpkt"
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/module/qproxy"
+	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
@@ -20,7 +21,6 @@ import (
 	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
-	"github.com/fragglet/ipxbox/ppp/pptp"
 	"github.com/fragglet/ipxbox/server"
 	"github.com/fragglet/ipxbox/server/dosbox"
 	"github.com/fragglet/ipxbox/server/uplink"
@@ -37,7 +37,6 @@ var (
 	allowNetBIOS   = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableIpxpkt   = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
 	enableSyslog   = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
-	enablePPTP     = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
 )
 
@@ -90,6 +89,7 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 func main() {
 	modules := []module.Module{
 		qproxy.Module,
+		pptp.Module,
 	}
 
 	for _, m := range modules {
@@ -136,13 +136,6 @@ func main() {
 			log.Printf("Using Slirp subprocess for ipxpkt router")
 		}
 		go phys.CopyFrames(r, tapConn)
-	}
-	if *enablePPTP {
-		pptps, err := pptp.NewServer(net)
-		if err != nil {
-			log.Fatalf("failed to start PPTP server: %v", err)
-		}
-		go pptps.Run(ctx)
 	}
 
 	for _, m := range modules {
