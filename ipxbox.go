@@ -10,6 +10,7 @@ import (
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/module/aggregate"
+	"github.com/fragglet/ipxbox/module/bridge"
 	"github.com/fragglet/ipxbox/module/ipxpkt"
 	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/module/qproxy"
@@ -81,6 +82,7 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 
 func main() {
 	mainmod := aggregate.MakeModule(
+		bridge.Module,
 		ipxpkt.Module,
 		qproxy.Module,
 		pptp.Module,
@@ -109,16 +111,13 @@ func main() {
 	physLink, err := physFlags.MakePhys(false)
 	if err != nil {
 		log.Fatalf("failed to set up physical network: %v", err)
-	} else if physLink != nil {
-		port := network.MustMakeNode(uplinkable)
-		go physLink.Run()
-		go ipx.DuplexCopyPackets(ctx, physLink, port)
 	}
 
 	err = mainmod.Start(ctx, &module.Parameters{
 		Network:    net,
 		Uplinkable: uplinkable,
 		Logger:     logger,
+		Phys:       physLink,
 	})
 	if err != nil {
 		log.Fatalf("server terminated with error: %v", err)
