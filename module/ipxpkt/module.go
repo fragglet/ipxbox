@@ -16,7 +16,8 @@ type mod struct {
 }
 
 var (
-	Module = (module.Module)(&mod{})
+	Module = &mod{}
+	_      = (module.Module)(Module)
 )
 
 func (m *mod) Initialize() {
@@ -30,11 +31,23 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 
 	port := network.MustMakeNode(params.Network)
 	r := NewRouter(port)
-	// TODO: Add back option for bridge to physical network
-	tapConn, err := phys.MakeSlirp()
-	if err != nil {
-		return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
+
+	var tapConn phys.DuplexEthernetStream
+	var err error
+	if params.Phys != nil {
+		tapConn = params.Phys.NonIPX()
+		log.Printf("Using physical network tap for ipxpkt router")
+	} else {
+		tapConn, err = phys.MakeSlirp()
+		if err != nil {
+			return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
+		}
+		log.Printf("Using Slirp subprocess for ipxpkt router")
 	}
-	log.Printf("Using Slirp subprocess for ipxpkt router")
+
 	return phys.CopyFrames(r, tapConn)
+}
+
+func (m *mod) Enabled() bool {
+	return *m.enabled
 }
