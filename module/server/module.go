@@ -33,7 +33,7 @@ func (m *mod) IsEnabled() bool {
 	return true
 }
 
-func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	protocols := []server.Protocol{
 		&dosbox.Protocol{
 			Logger:        params.Logger,
@@ -61,4 +61,5 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) {
 		log.Fatal(err)
 	}
 	s.Run(ctx)
+	return nil
 }

@@ -26,7 +26,7 @@ func (m *mod) IsEnabled() bool {
 	return *m.enabled
 }
 
-func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	port := network.MustMakeNode(params.Network)
 	r := NewRouter(port)
 	// TODO: Add back option for bridge to physical network
@@ -36,4 +36,5 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) {
 	}
 	log.Printf("Using Slirp subprocess for ipxpkt router")
 	go phys.CopyFrames(r, tapConn)
+	return nil
 }

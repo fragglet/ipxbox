@@ -21,7 +21,7 @@ type Module interface {
 	IsEnabled() bool
 
 	// Start activates the module.
-	Start(ctx context.Context, params *Parameters)
+	Start(ctx context.Context, params *Parameters) error
 }
 
 type Parameters struct {

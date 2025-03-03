@@ -25,10 +25,11 @@ func (m *mod) IsEnabled() bool {
 	return *m.enabled
 }
 
-func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	pptps, err := pptp.NewServer(params.Network)
 	if err != nil {
 		log.Fatalf("failed to start PPTP server: %v", err)
 	}
 	go pptps.Run(ctx)
+	return nil
 }

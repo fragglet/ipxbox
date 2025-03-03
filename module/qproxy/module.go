@@ -30,7 +30,7 @@ func (m *mod) IsEnabled() bool {
 	return *m.quakeServers != ""
 }
 
-func (m *mod) Start(ctx context.Context, params *module.Parameters) {
+func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	for _, addr := range strings.Split(*m.quakeServers, ",") {
 		node := network.MustMakeNode(params.Network)
 		p := New(&Config{
@@ -39,4 +39,5 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) {
 		}, node)
 		go p.Run(ctx)
 	}
+	return nil
 }
