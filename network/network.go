@@ -2,6 +2,8 @@
 package network
 
 import (
+	"log"
+
 	"github.com/fragglet/ipxbox/ipx"
 )
 
@@ -32,4 +34,15 @@ func NodeAddress(n Node) ipx.Addr {
 		return ipx.AddrNull
 	}
 	return result
+}
+
+// MustMakeNode is a convenience function that calls `NewNode()` but aborts
+// the program if it fails. This should only ever be used at program startup
+// or in test code.
+func MustMakeNode(net Network) Node {
+	node, err := net.NewNode()
+	if err != nil {
+		log.Fatalf("failed to create network node: %v", err)
+	}
+	return node
 }
