@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/fragglet/ipxbox/module"
@@ -43,7 +42,7 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	}
 	if *m.uplinkPassword != "" {
 		if params.Uplinkable == nil {
-			log.Fatalf("Sorry, a direct connection is needed to run an uplink server.")
+			return fmt.Errorf("Sorry, a direct connection is needed to run an uplink server.")
 		}
 		protocols = append(protocols, &uplink.Protocol{
 			Logger:        params.Logger,
@@ -58,7 +57,7 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 		Logger:        params.Logger,
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	s.Run(ctx)
 	return nil

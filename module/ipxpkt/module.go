@@ -3,6 +3,7 @@ package ipxpkt
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/fragglet/ipxbox/module"
@@ -32,9 +33,8 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	// TODO: Add back option for bridge to physical network
 	tapConn, err := phys.MakeSlirp()
 	if err != nil {
-		log.Fatalf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
+		return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
 	}
 	log.Printf("Using Slirp subprocess for ipxpkt router")
-	go phys.CopyFrames(r, tapConn)
-	return nil
+	return phys.CopyFrames(r, tapConn)
 }

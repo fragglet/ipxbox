@@ -4,8 +4,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/fragglet/ipxbox/ipx"
 	"github.com/fragglet/ipxbox/module"
@@ -78,6 +81,23 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 	return net, stats.Wrap(uplinkable)
 }
 
+func moduleRunner(ctx context.Context, m module.Module, params *module.Parameters) func() error {
+	return func() error {
+		m.Start(ctx, params)
+		return fmt.Errorf("module %+v terminated", m)
+	}
+}
+
+func runModules(ctx context.Context, modules []module.Module, params *module.Parameters) error {
+	eg, egctx := errgroup.WithContext(ctx)
+	for _, m := range modules {
+		if m.IsEnabled() {
+			eg.Go(moduleRunner(egctx, m, params))
+		}
+	}
+	return eg.Wait()
+}
+
 func main() {
 	modules := []module.Module{
 		ipxpkt.Module,
@@ -116,14 +136,12 @@ func main() {
 		go ipx.DuplexCopyPackets(ctx, physLink, port)
 	}
 
-	moduleParams := &module.Parameters{
+	err = runModules(ctx, modules, &module.Parameters{
 		Network:    net,
 		Uplinkable: uplinkable,
 		Logger:     logger,
-	}
-	for _, m := range modules {
-		if m.IsEnabled() {
-			m.Start(ctx, moduleParams)
-		}
+	})
+	if err != nil {
+		log.Fatalf("server terminated with error: %v", err)
 	}
 }

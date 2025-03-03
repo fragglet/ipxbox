@@ -3,7 +3,7 @@ package pptp
 import (
 	"context"
 	"flag"
-	"log"
+	"fmt"
 
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/ppp/pptp"
@@ -28,8 +28,8 @@ func (m *mod) IsEnabled() bool {
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	pptps, err := pptp.NewServer(params.Network)
 	if err != nil {
-		log.Fatalf("failed to start PPTP server: %v", err)
+		return fmt.Errorf("failed to start PPTP server: %v", err)
 	}
-	go pptps.Run(ctx)
+	pptps.Run(ctx)
 	return nil
 }
