@@ -40,7 +40,7 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	} else {
 		tapConn, err = phys.MakeSlirp()
 		if err != nil {
-			return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
+			return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -bridge.", err)
 		}
 		log.Printf("Using Slirp subprocess for ipxpkt router")
 	}

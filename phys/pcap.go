@@ -3,10 +3,10 @@
 package phys
 
 import (
-	"flag"
 	"fmt"
-	"github.com/google/gopacket/pcap"
 	"strings"
+
+	"github.com/google/gopacket/pcap"
 )
 
 func listNetDevices() (string, error) {
@@ -48,8 +48,4 @@ func openPcapHandle(deviceName string, captureNonIPX bool) (DuplexEthernetStream
 		}
 	}
 	return handle, nil
-}
-
-func maybeAddPcapDeviceFlag(f *Flags) {
-	f.PcapDevice = flag.String("pcap_device", "", `Send and receive packets to the given device ("list" to list all devices)`)
 }

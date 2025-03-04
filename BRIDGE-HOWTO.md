@@ -29,9 +29,9 @@ sudo setcap cap_net_raw,cap_net_admin=eip ./ipxbox
 ```
 On other systems (BSD, etc.) only the `root` user can access raw sockets.
 
-Next run `ipxbox` with the `--pcap_device` argument, eg.
+Next run `ipxbox` with the `--bridge` argument, eg.
 ```
-./ipxbox --port=10000 --pcap_device=eth0
+./ipxbox --port=10000 --bridge=pcap:eth0
 ```
 If working correctly, clients connecting to the server will now be bridged to
 `eth0`. You can test this using `tcpdump` to listen for IPX packets and
@@ -69,7 +69,7 @@ the first thing to check.
 format can be changed by using the `--ethernet_framing` command line flag.
 For example:
 ```
-./ipxbox --port=10000 --pcap_device=eth0 --ethernet_framing=eth-ii
+./ipxbox --port=10000 --bridge=pcap:eth0 --ethernet_framing=eth-ii
 ```
 
 | `--ethernet_framing` value | Description | Notes |
@@ -181,7 +181,7 @@ section.
 2. Read the warning in the paragraph above this list. Then add
 `--enable_ipxpkt` to the ipxbox command line. For example:
 ```
-./ipxbox --port=10000 --pcap_device=eth0 --enable_ipxpkt
+./ipxbox --port=10000 --bridge=pcap:eth0 --enable_ipxpkt
 ```
 3. Start a DOSbox client and connect to the server as normal. Make sure to
 mount a directory containing the [`ipxpkt.com`](ipxpkt/driver/) driver.

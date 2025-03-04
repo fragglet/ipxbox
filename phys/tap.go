@@ -55,3 +55,7 @@ func NewTap(cfg water.Config) (*tapWrapper, error) {
 	}
 	return &tapWrapper{ifce}, nil
 }
+
+func openTap(arg string, captureNonIPX bool) (DuplexEthernetStream, error) {
+	return NewTap(water.Config{})
+}

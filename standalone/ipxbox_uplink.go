@@ -31,7 +31,7 @@ func main() {
 		log.Fatalf("failed to open physical network: %v", err)
 	}
 	if physLink == nil {
-		log.Fatalf("No physical network specified. Please specify --pcap_device.")
+		log.Fatalf("No physical network specified. Please specify --bridge.")
 	}
 
 	conn, err := uplink.Dial(ctx, *uplinkServer, *password)
