@@ -68,12 +68,12 @@ type Spec struct {
 	Arg  string
 }
 
-func typeNames() []string {
+func typeNames() string {
 	result := []string{}
 	for key := range types {
-		result = append(result, key)
+		result = append(result, fmt.Sprintf("%#v", key))
 	}
-	return result
+	return strings.Join(result, ", ")
 }
 
 func SpecFlag(name, defaultValue, usage string) *Spec {
@@ -85,7 +85,7 @@ func SpecFlag(name, defaultValue, usage string) *Spec {
 		}
 		t, ok := types[parts[0]]
 		if !ok {
-			return fmt.Errorf("unknown capture type %#v: valid values: %#v", parts[0], typeNames())
+			return fmt.Errorf("unknown capture type %#v: valid values: %v", parts[0], typeNames())
 		}
 		result.Type = t
 		result.Arg = parts[1]
