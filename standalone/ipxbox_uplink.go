@@ -9,8 +9,10 @@ import (
 
 	"github.com/fragglet/ipxbox/client/uplink"
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/bridge"
+	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/filter"
-	"github.com/fragglet/ipxbox/phys"
 )
 
 var (
@@ -19,31 +21,38 @@ var (
 	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 )
 
+type fakeNetwork struct {
+	ipx.ReadWriteCloser
+}
+
+func (f *fakeNetwork) NewNode() (network.Node, error) {
+	return f, nil
+}
+
+func (f *fakeNetwork) GetProperty(value interface{}) bool {
+	return false
+}
+
 func main() {
-	physFlags := phys.RegisterFlags()
+	ctx := context.Background()
+	mod := bridge.Module
+	mod.Initialize()
 	flag.Parse()
 	if *uplinkServer == "" || *password == "" {
 		log.Fatalf("Uplink server and/or password no specified. Please specify --uplink_server and --password.")
 	}
-	ctx := context.Background()
-	physLink, err := physFlags.MakePhys(false)
-	if err != nil {
-		log.Fatalf("failed to open physical network: %v", err)
-	}
-	if physLink == nil {
-		log.Fatalf("No physical network specified. Please specify --bridge.")
-	}
-
 	conn, err := uplink.Dial(ctx, *uplinkServer, *password)
 	if err != nil {
 		log.Fatalf("failed to connect to server: %v", err)
 	}
 	defer conn.Close()
-	go physLink.Run()
 	if !*allowNetBIOS {
 		conn = filter.New(conn)
 	}
-	if err := ipx.DuplexCopyPackets(ctx, conn, physLink); err != nil {
-		log.Fatalf("error while copying packets: %v", err)
+	err = mod.Start(ctx, &module.Parameters{
+		Uplinkable: &fakeNetwork{conn},
+	})
+	if err != nil {
+		log.Fatalf("bridge exited with error: %v", err)
 	}
 }
