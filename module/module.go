@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"github.com/fragglet/ipxbox/network"
-	"github.com/fragglet/ipxbox/phys"
 )
 
 // Module defines an interface for optional modules that can be part of
@@ -32,9 +31,6 @@ type Parameters struct {
 
 	// Logger should be used for reporting log messages.
 	Logger *log.Logger
-
-	// Phys represents a bridge to a real, physical network, if one is configured.
-	Phys *phys.Phys
 }
 
 var (

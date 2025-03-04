@@ -18,33 +18,6 @@ var (
 	}
 )
 
-type Flags struct {
-	Bridge          *Spec
-	EthernetFraming *Framer
-}
-
-func RegisterFlags() *Flags {
-	f := &Flags{}
-	f.Bridge = SpecFlag("bridge", "", `Bridge to physical network. Valid values are: "tap:" or "pcap:{device name}"`)
-	f.EthernetFraming = FramingTypeFlag("ethernet_framing", `Framing to use when sending Ethernet packets. Valid values are "auto", "802.2", "802.3raw", "snap" and "eth-ii".`)
-	return f
-}
-
-func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error) {
-	return f.Bridge.Type(f.Bridge.Arg, captureNonIPX)
-}
-
-func (f *Flags) MakePhys(captureNonIPX bool) (*Phys, error) {
-	stream, err := f.EthernetStream(captureNonIPX)
-	if err != nil {
-		return nil, err
-	} else if stream != nil {
-		return NewPhys(stream, *f.EthernetFraming), nil
-	}
-	// Physical capture not enabled.
-	return nil, nil
-}
-
 type Spec struct {
 	Type Type
 	Arg  string
