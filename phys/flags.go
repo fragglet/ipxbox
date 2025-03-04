@@ -24,7 +24,7 @@ func (f *Flags) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error)
 	if *f.EnableTap {
 		return NewTap(water.Config{})
 	}
-	return openPcapHandle(f, captureNonIPX)
+	return openPcapHandle(*f.PcapDevice, captureNonIPX)
 }
 
 func (f *Flags) makeFramer() (Framer, error) {

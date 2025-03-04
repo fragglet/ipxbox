@@ -21,18 +21,18 @@ func listNetDevices() (string, error) {
 	return strings.Join(result, ", "), nil
 }
 
-func openPcapHandle(f *Flags, captureNonIPX bool) (DuplexEthernetStream, error) {
-	if *f.PcapDevice == "" {
+func openPcapHandle(deviceName string, captureNonIPX bool) (DuplexEthernetStream, error) {
+	if deviceName == "" {
 		return nil, nil
 	}
-	if *f.PcapDevice == "list" {
+	if deviceName == "list" {
 		devices, err := listNetDevices()
 		if err != nil {
 			return nil, err
 		}
 		return nil, fmt.Errorf("valid network devices are: %v", devices)
 	}
-	handle, err := pcap.OpenLive(*f.PcapDevice, 1500, true, pcap.BlockForever)
+	handle, err := pcap.OpenLive(deviceName, 1500, true, pcap.BlockForever)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,7 @@
 
 package phys
 
-func openPcapHandle(f *Flags, captureNonIPX bool) (DuplexEthernetStream, error) {
+func openPcapHandle(deviceName string, captureNonIPX bool) (DuplexEthernetStream, error) {
 	return nil, nil
 }
 
