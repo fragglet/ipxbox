@@ -77,8 +77,12 @@ func typeNames() string {
 	return strings.Join(result, ", ")
 }
 
+func openNull(arg string, captureNonIPX bool) (DuplexEthernetStream, error) {
+	return nil, nil
+}
+
 func SpecFlag(name, defaultValue, usage string) *Spec {
-	result := &Spec{}
+	result := &Spec{openNull, ""}
 	setValue := func(s string) error {
 		parts := strings.SplitN(s, ":", 2)
 		if len(parts) == 1 {
