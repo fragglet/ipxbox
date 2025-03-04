@@ -8,7 +8,7 @@ import (
 	"github.com/fragglet/ipxbox/ppp/pptp"
 )
 
-type mod struct {}
+type mod struct{}
 
 var (
 	Module = (module.Module)(&mod{})

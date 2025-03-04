@@ -33,7 +33,7 @@ var (
 	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
 	enableSyslog = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 	enableIpxpkt = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network")
-	enablePPTP = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
+	enablePPTP   = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
 
 func makePcapWriter() *pcapgo.Writer {

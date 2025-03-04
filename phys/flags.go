@@ -13,7 +13,7 @@ type Type func(arg string, captureNonIPX bool) (DuplexEthernetStream, error)
 
 var (
 	types = map[string]Type{
-		"tap":  openTap,
+		"tap":   openTap,
 		"slirp": openSlirp,
 	}
 )

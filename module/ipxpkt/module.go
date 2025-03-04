@@ -9,7 +9,7 @@ import (
 )
 
 type mod struct {
-	bridge  *phys.Spec
+	bridge *phys.Spec
 }
 
 var (
