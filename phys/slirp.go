@@ -138,3 +138,7 @@ func MakeSlirp() (*SlirpConnection, error) {
 	}
 	return conn, nil
 }
+
+func openSlirp(arg string, captureNonIPX bool) (DuplexEthernetStream, error) {
+	return MakeSlirp()
+}
