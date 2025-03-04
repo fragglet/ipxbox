@@ -30,6 +30,7 @@ var (
 	_ = (DuplexEthernetStream)(&nonIPX{})
 	_ = (PacketDataSink)(&pcapgoSinkShim{})
 	_ = (PcapgoDataSink)(&pcapgo.Writer{})
+	_ = (DuplexEthernetStream)(&ChecksumFixer{})
 )
 
 // PacketDataSink is the complement to gopacket.PacketDataSource: the
@@ -176,7 +177,6 @@ func (p *Phys) NonIPX() DuplexEthernetStream {
 		p.nonIPX = &nonIPX{
 			phys:   p,
 			frames: make(chan gopacket.Packet),
-			sb:     gopacket.NewSerializeBuffer(),
 		}
 	}
 	return p.nonIPX
@@ -185,48 +185,6 @@ func (p *Phys) NonIPX() DuplexEthernetStream {
 type nonIPX struct {
 	phys   *Phys
 	frames chan gopacket.Packet
-	sb     gopacket.SerializeBuffer
-}
-
-func (ni *nonIPX) serializePacket(pkt gopacket.Packet) ([]byte, error) {
-	// We got a packet. But we recompute checksums when converting back
-	// into a byte slice (rather than just calling pkt.Data()). The
-	// reason is that if we are capturing from a physical interface,
-	// hardware checksum offloading in the kernel may mean that the
-	// checksums are invalid. In particular I found problems with the
-	// Linux veth devices where checksumming is skipped entirely since
-	// it's not usually needed.
-	ls := pkt.Layers()
-	eth, ok := ls[0].(*layers.Ethernet)
-	if !ok {
-		return nil, fmt.Errorf("non-ethernet frame (this should not happen")
-	}
-	newLayers := []gopacket.SerializableLayer{eth}
-
-	// This is deliberately hard-coded so that we only ever do CRC
-	// recompute for IP, TCP and UDP - nothing else. If gopacket's
-	// serialization of higher-level layers is used, it will change the
-	// contents of some protocols.
-	if ip, ok := ls[1].(*layers.IPv4); ok {
-		newLayers = append(newLayers, ip)
-		if udp, ok := ls[2].(*layers.UDP); ok {
-			newLayers = append(newLayers, udp)
-			udp.SetNetworkLayerForChecksum(ip)
-		} else if tcp, ok := ls[2].(*layers.TCP); ok {
-			newLayers = append(newLayers, tcp)
-			tcp.SetNetworkLayerForChecksum(ip)
-		}
-	}
-	payload := newLayers[len(newLayers)-1].(gopacket.Layer).LayerPayload()
-	newLayers = append(newLayers, gopacket.Payload(payload))
-
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-	}
-	if err := gopacket.SerializeLayers(ni.sb, opts, newLayers...); err != nil {
-		return nil, err
-	}
-	return ni.sb.Bytes(), nil
 }
 
 func (ni *nonIPX) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
@@ -234,11 +192,7 @@ func (ni *nonIPX) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
 	if !ok {
 		return nil, gopacket.CaptureInfo{}, io.EOF
 	}
-	result, err := ni.serializePacket(pkt)
-	if err != nil {
-		return nil, gopacket.CaptureInfo{}, err
-	}
-	return result, pkt.Metadata().CaptureInfo, nil
+	return pkt.Data(), pkt.Metadata().CaptureInfo, nil
 }
 
 func (ni *nonIPX) WritePacketData(frame []byte) error {
@@ -299,4 +253,81 @@ func CopyFrames(a, b DuplexEthernetStream) error {
 		return err2
 	}
 	return nil
+}
+
+// ChecksumFixer is an implementation of `DuplexEthernetStream` that wraps
+// another `DuplexEthernetStream` but recalculates TCP/IP checksums
+type ChecksumFixer struct {
+	ps   *gopacket.PacketSource
+	sb   gopacket.SerializeBuffer
+	sink PacketDataSink
+}
+
+func (cf *ChecksumFixer) serializePacket(pkt gopacket.Packet) ([]byte, error) {
+	// We got a packet. But we recompute checksums when converting back
+	// into a byte slice (rather than just calling pkt.Data()). The
+	// reason is that if we are capturing from a physical interface,
+	// hardware checksum offloading in the kernel may mean that the
+	// checksums are invalid. In particular I found problems with the
+	// Linux veth devices where checksumming is skipped entirely since
+	// it's not usually needed.
+	ls := pkt.Layers()
+	eth, ok := ls[0].(*layers.Ethernet)
+	if !ok {
+		return nil, fmt.Errorf("non-ethernet frame (this should not happen")
+	}
+	newLayers := []gopacket.SerializableLayer{eth}
+
+	// This is deliberately hard-coded so that we only ever do CRC
+	// recompute for IP, TCP and UDP - nothing else. If gopacket's
+	// serialization of higher-level layers is used, it will change the
+	// contents of some protocols.
+	if ip, ok := ls[1].(*layers.IPv4); ok {
+		newLayers = append(newLayers, ip)
+		if udp, ok := ls[2].(*layers.UDP); ok {
+			newLayers = append(newLayers, udp)
+			udp.SetNetworkLayerForChecksum(ip)
+		} else if tcp, ok := ls[2].(*layers.TCP); ok {
+			newLayers = append(newLayers, tcp)
+			tcp.SetNetworkLayerForChecksum(ip)
+		}
+	}
+	payload := newLayers[len(newLayers)-1].(gopacket.Layer).LayerPayload()
+	newLayers = append(newLayers, gopacket.Payload(payload))
+
+	opts := gopacket.SerializeOptions{
+		ComputeChecksums: true,
+	}
+	if err := gopacket.SerializeLayers(cf.sb, opts, newLayers...); err != nil {
+		return nil, err
+	}
+	return cf.sb.Bytes(), nil
+}
+
+func (cf *ChecksumFixer) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
+	pkt, err := cf.ps.NextPacket()
+	if err != nil {
+		return nil, gopacket.CaptureInfo{}, err
+	}
+	result, err := cf.serializePacket(pkt)
+	if err != nil {
+		return nil, gopacket.CaptureInfo{}, err
+	}
+	return result, pkt.Metadata().CaptureInfo, nil
+}
+
+func (cf *ChecksumFixer) WritePacketData(frame []byte) error {
+	return cf.sink.WritePacketData(frame)
+}
+
+func (cf *ChecksumFixer) Close() {
+	cf.sink.Close()
+}
+
+func NewChecksumFixer(stream DuplexEthernetStream) *ChecksumFixer {
+	return &ChecksumFixer{
+		sink: stream,
+		ps:   gopacket.NewPacketSource(stream, layers.LinkTypeEthernet),
+		sb:   gopacket.NewSerializeBuffer(),
+	}
 }

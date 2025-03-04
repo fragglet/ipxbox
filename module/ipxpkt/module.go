@@ -36,6 +36,7 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	var err error
 	if params.Phys != nil {
 		tapConn = params.Phys.NonIPX()
+		tapConn = phys.NewChecksumFixer(tapConn)
 		log.Printf("Using physical network tap for ipxpkt router")
 	} else {
 		tapConn, err = phys.MakeSlirp()
