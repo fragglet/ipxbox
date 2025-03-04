@@ -40,7 +40,3 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 
 	return phys.CopyFrames(r, tapConn)
 }
-
-func (m *mod) Enabled() bool {
-	return *m.enabled
-}

@@ -108,12 +108,7 @@ func main() {
 
 	net, uplinkable := makeNetwork(ctx)
 
-	// We have a minor hard-coded hack here: we usually filter everything
-	// except IPX packets, but if --enable_ipxpkt is given then we want
-	// to capture everything.
-	captureNonIPX := ipxpkt.Module.Enabled()
-
-	physLink, err := physFlags.MakePhys(captureNonIPX)
+	physLink, err := physFlags.MakePhys(false)
 	if err != nil {
 		log.Fatalf("failed to set up physical network: %v", err)
 	}
