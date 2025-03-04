@@ -80,8 +80,8 @@ func SpecFlag(name, defaultValue, usage string) *Spec {
 	result := &Spec{}
 	setValue := func(s string) error {
 		parts := strings.SplitN(s, ":", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("failed to parse flag value: %#v", s)
+		if len(parts) == 1 {
+			parts = []string{parts[0], ""}
 		}
 		t, ok := types[parts[0]]
 		if !ok {
