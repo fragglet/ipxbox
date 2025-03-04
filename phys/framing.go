@@ -28,7 +28,7 @@ var (
 	FramerSNAP       = framerSNAP{}
 	FramerEthernetII = framerEthernetII{}
 
-	allFramers = []Framer{Framer802_2, Framer802_3Raw, FramerEthernetII, FramerSNAP}
+	allFramers = []Framer{Framer802_2, Framer802_3Raw, FramerEthernetII, FramerSNAP, &automaticFramer{}}
 )
 
 // Unframe parses the layers in the given packet to locate and extract
@@ -251,6 +251,9 @@ func (f *automaticFramer) detectedFramer(detected Framer, payload []byte) {
 
 func (f *automaticFramer) Unframe(eth *layers.Ethernet, nextLayers []gopacket.Layer) ([]byte, bool) {
 	for _, framer := range allFramers {
+		if framer == f {
+			continue
+		}
 		result, ok := framer.Unframe(eth, nextLayers)
 		if ok {
 			f.detectedFramer(framer, result)

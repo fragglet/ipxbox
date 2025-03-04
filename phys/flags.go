@@ -96,7 +96,6 @@ func framerNames() string {
 
 func FramingTypeFlag(name, usage string) *Framer {
 	var result Framer
-	result = &automaticFramer{fallback: Framer802_2}
 	setValue := func(s string) error {
 		for _, framer := range allFramers {
 			if s == framer.Name() {
@@ -107,5 +106,8 @@ func FramingTypeFlag(name, usage string) *Framer {
 		return fmt.Errorf("unknown Ethernet framing %q: valid values are: %v.", s, framerNames())
 	}
 	flag.Func(name, usage, setValue)
+	if err := setValue("auto"); err != nil {
+		log.Fatalf("BUG: failed to set default framing type")
+	}
 	return &result
 }
