@@ -50,6 +50,10 @@ type Spec struct {
 	Arg  string
 }
 
+func (s *Spec) EthernetStream(captureNonIPX bool) (DuplexEthernetStream, error) {
+	return s.Type(s.Arg, captureNonIPX)
+}
+
 func typeNames() string {
 	result := []string{}
 	for key := range types {
