@@ -7,31 +7,31 @@ import (
 	"context"
 	"flag"
 	"log"
-	"time"
 
 	"github.com/fragglet/ipxbox/client/dosbox"
-	"github.com/fragglet/ipxbox/qproxy"
+	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/qproxy"
 )
 
 var (
 	dosboxServer = flag.String("dosbox_server", "", "Address of DOSbox IPX server.")
-	quakeServer  = flag.String("quake_server", "", "Address of Quake server.")
 )
 
 func main() {
-	flag.Parse()
 	ctx := context.Background()
 
-	node, err := dosbox.Dial(ctx, *dosboxServer)
+	mod := qproxy.Module
+	mod.Initialize()
+	flag.Parse()
+
+	if *dosboxServer == "" {
+		log.Fatalf("no address given for -dosbox_server")
+	}
+
+	err := mod.Start(ctx, &module.Parameters{
+		Network: &dosbox.Client{ctx, *dosboxServer},
+	})
 	if err != nil {
-		log.Fatalf("failed to connect to server: %v", err)
+		log.Fatalf("server terminated with error: %v", err)
 	}
-
-	config := &qproxy.Config{
-		Address:     *quakeServer,
-		IdleTimeout: 60 * time.Second,
-	}
-
-	proxy := qproxy.New(config, node)
-	proxy.Run(ctx)
 }
