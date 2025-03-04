@@ -27,7 +27,6 @@ const loopbackDetectValue = 127
 var (
 	_ = (ipx.WriteCloser)(&Sink{})
 	_ = (ipx.ReadWriteCloser)(&Phys{})
-	_ = (DuplexEthernetStream)(&nonIPX{})
 	_ = (PacketDataSink)(&pcapgoSinkShim{})
 	_ = (PcapgoDataSink)(&pcapgo.Writer{})
 	_ = (DuplexEthernetStream)(&ChecksumFixer{})
@@ -121,17 +120,10 @@ type Phys struct {
 	*Sink
 	ps     *gopacket.PacketSource
 	rxpipe ipx.ReadWriteCloser
-	nonIPX *nonIPX
-	mu     sync.Mutex
 }
 
 func (p *Phys) Close() error {
 	p.rxpipe.Close()
-	p.mu.Lock()
-	if p.nonIPX != nil {
-		p.nonIPX.Close()
-	}
-	p.mu.Unlock()
 	p.Sink.Close()
 	return nil
 }
@@ -152,12 +144,6 @@ func (p *Phys) Run() error {
 			if ipxpkt.Header.TransControl != loopbackDetectValue {
 				p.rxpipe.WritePacket(ipxpkt)
 			}
-		} else {
-			p.mu.Lock()
-			if p.nonIPX != nil {
-				p.nonIPX.frames <- pkt
-			}
-			p.mu.Unlock()
 		}
 	}
 }
@@ -166,45 +152,6 @@ func (p *Phys) Run() error {
 // IPX packet is read from the physical interface.
 func (p *Phys) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	return p.rxpipe.ReadPacket(ctx)
-}
-
-// NonIPX returns a DuplexEthernetStream from which all non-IPX Ethernet frames
-// will be returned by ReadPacketData().
-func (p *Phys) NonIPX() DuplexEthernetStream {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.nonIPX == nil {
-		p.nonIPX = &nonIPX{
-			phys:   p,
-			frames: make(chan gopacket.Packet),
-		}
-	}
-	return p.nonIPX
-}
-
-type nonIPX struct {
-	phys   *Phys
-	frames chan gopacket.Packet
-}
-
-func (ni *nonIPX) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
-	pkt, ok := <-ni.frames
-	if !ok {
-		return nil, gopacket.CaptureInfo{}, io.EOF
-	}
-	return pkt.Data(), pkt.Metadata().CaptureInfo, nil
-}
-
-func (ni *nonIPX) WritePacketData(frame []byte) error {
-	// Write is just a passthrough to the underlying sink.
-	return ni.phys.Sink.pds.WritePacketData(frame)
-}
-
-func (ni *nonIPX) Close() {
-	ni.phys.mu.Lock()
-	close(ni.frames)
-	ni.phys.nonIPX = nil
-	ni.phys.mu.Unlock()
 }
 
 func NewPhys(stream DuplexEthernetStream, framer Framer) *Phys {
