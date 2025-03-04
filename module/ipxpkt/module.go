@@ -3,8 +3,6 @@ package ipxpkt
 import (
 	"context"
 	"flag"
-	"fmt"
-	"log"
 
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/network"
@@ -13,6 +11,7 @@ import (
 
 type mod struct {
 	enabled *bool
+	bridge  *phys.Spec
 }
 
 var (
@@ -22,6 +21,7 @@ var (
 
 func (m *mod) Initialize() {
 	m.enabled = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network")
+	m.bridge = phys.SpecFlag("ipxpkt_bridge", "slirp", `Network connection for ipxpkt driver; the syntax is the same as the -bridge flag (default: "slirp").`)
 }
 
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
@@ -32,19 +32,11 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	port := network.MustMakeNode(params.Network)
 	r := NewRouter(port)
 
-	var tapConn phys.DuplexEthernetStream
-	var err error
-	if params.Phys != nil {
-		tapConn = params.Phys.NonIPX()
-		tapConn = phys.NewChecksumFixer(tapConn)
-		log.Printf("Using physical network tap for ipxpkt router")
-	} else {
-		tapConn, err = phys.MakeSlirp()
-		if err != nil {
-			return fmt.Errorf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -bridge.", err)
-		}
-		log.Printf("Using Slirp subprocess for ipxpkt router")
+	tapConn, err := m.bridge.EthernetStream(true)
+	if err != nil {
+		return err
 	}
+	tapConn = phys.NewChecksumFixer(tapConn)
 
 	return phys.CopyFrames(r, tapConn)
 }
