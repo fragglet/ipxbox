@@ -91,7 +91,6 @@ func main() {
 
 	mainmod.Initialize()
 
-	physFlags := phys.RegisterFlags()
 	flag.Parse()
 
 	ctx := context.Background()
@@ -108,16 +107,10 @@ func main() {
 
 	net, uplinkable := makeNetwork(ctx)
 
-	physLink, err := physFlags.MakePhys(false)
-	if err != nil {
-		log.Fatalf("failed to set up physical network: %v", err)
-	}
-
-	err = mainmod.Start(ctx, &module.Parameters{
+	err := mainmod.Start(ctx, &module.Parameters{
 		Network:    net,
 		Uplinkable: uplinkable,
 		Logger:     logger,
-		Phys:       physLink,
 	})
 	if err != nil {
 		log.Fatalf("server terminated with error: %v", err)
