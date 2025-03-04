@@ -49,3 +49,7 @@ func openPcapHandle(deviceName string, captureNonIPX bool) (DuplexEthernetStream
 	}
 	return handle, nil
 }
+
+func init() {
+	types["pcap"] = openPcapHandle
+}
