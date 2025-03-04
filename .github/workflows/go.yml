@@ -52,6 +52,9 @@ jobs:
         cd artifacts
         go build -tags nopcap -v ../ipxbox.go
         go build -tags nopcap -v ../standalone/ipxbox_uplink.go
+        go build -tags nopcap -v ../standalone/standalone_ipxpkt.go
+        go build -tags nopcap -v ../standalone/standalone_pptp.go
+        go build -tags nopcap -v ../standalone/standalone_qproxy.go
       env:
         GOARCH: ${{ matrix.goarch }}
         GOOS: ${{ matrix.goos }}
