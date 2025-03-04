@@ -36,3 +36,24 @@ type Parameters struct {
 var (
 	NotNeeded = errors.New("module exited with nothing to do")
 )
+
+type optionalModule struct {
+	inner   Module
+	enabled *bool
+}
+
+func (m *optionalModule) Initialize() {
+}
+
+func (m *optionalModule) Start(ctx context.Context, params *Parameters) error {
+	if !*m.enabled {
+		return NotNeeded
+	}
+	return m.inner.Start(ctx, params)
+}
+
+// Optional returns a module that wraps another module, only activating that
+// module if the pointed-to variable is set to true.
+func Optional(m Module, enabled *bool) Module {
+	return &optionalModule{m, enabled}
+}
