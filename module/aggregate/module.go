@@ -4,7 +4,8 @@ package aggregate
 
 import (
 	"context"
-	"fmt"
+	"log"
+	"reflect"
 
 	"golang.org/x/sync/errgroup"
 
@@ -27,8 +28,14 @@ func moduleRunner(ctx context.Context, m module.Module, params *module.Parameter
 		if err == module.NotNeeded {
 			return nil
 		} else if err == nil {
-			err = fmt.Errorf("module %+v terminated", m)
+			err = module.EarlyTermination
 		}
+		// TODO: It ought to be the case that the cancelled context
+		// from a failed module causes all the other modules to shut
+		// down. However, not all modules reliably shut down when
+		// cancelled yet. Instead, we quit with a fatal abort on the
+		// first detected failure.
+		log.Fatalf("module %s terminated unexpectedly: %v", reflect.TypeOf(m).String(), err)
 		return err
 	}
 }

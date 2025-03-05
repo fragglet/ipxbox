@@ -34,7 +34,8 @@ type Parameters struct {
 }
 
 var (
-	NotNeeded = errors.New("module exited with nothing to do")
+	NotNeeded        = errors.New("module exited with nothing to do")
+	EarlyTermination = errors.New("module terminated unexpectedly")
 )
 
 type optionalModule struct {
