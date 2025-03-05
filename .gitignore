@@ -1,0 +1,6 @@
+*.exe
+ipxbox
+ipxbox_uplink
+standalone_ipxpkt
+standalone_pptp
+standalone_qproxy
