@@ -14,9 +14,12 @@ a lot of damage you can do with the IPX protocol nowadays but there's still the
 possibility that if you use this on a public server, you might be exposing
 something on your network that you don't intend to.
 
-There are two ways to set things up: `ipxbox` can either create a TAP device
-(use `--enable_tap`) or use `libpcap` to connect to a real Ethernet device.
-If you don't know what this means, you'll want to use the `libpcap` approach.
+There are two ways to set things up: `ipxbox` can either create a
+[TAP device](https://en.wikipedia.org/wiki/TUN/TAP) or use
+[`libpcap`](https://en.wikipedia.org/wiki/Pcap)
+to connect to a real Ethernet device. If you don't know what this means,
+you'll want to use the `libpcap` approach, which is what the following
+instructions describe.
 
 Find out which Ethernet interface (network card) you want to use by using the
 Linux `ifconfig` command. Usually the interface will be named something like
@@ -46,6 +49,7 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 05:08:48.529183 IPX 00000000.02:cf:0d:86:54:e5.4002 > 00000000.ff:ff:ff:ff:ff:ff.6590: ipx-#6590 16
 05:08:48.888311 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
 ```
+To use TAP, specify `--bridge=tap` instead.
 
 ## Configuring frame type
 
