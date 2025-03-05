@@ -43,6 +43,7 @@ type optionalModule struct {
 }
 
 func (m *optionalModule) Initialize() {
+	m.inner.Initialize()
 }
 
 func (m *optionalModule) Start(ctx context.Context, params *Parameters) error {
