@@ -28,7 +28,11 @@ var (
 	FramerSNAP       = framerSNAP{}
 	FramerEthernetII = framerEthernetII{}
 
-	allFramers = []Framer{Framer802_2, Framer802_3Raw, FramerEthernetII, FramerSNAP, &automaticFramer{}}
+	FramerAutomatic = &automaticFramer{
+		fallback: Framer802_2,
+	}
+
+	allFramers = []Framer{Framer802_2, Framer802_3Raw, FramerEthernetII, FramerSNAP, FramerAutomatic}
 )
 
 // Unframe parses the layers in the given packet to locate and extract
