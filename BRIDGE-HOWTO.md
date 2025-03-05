@@ -155,7 +155,7 @@ problems you can disable autodetection and manually specify it.
 | `snap` | Ethernet 802.2 SNAP | 802.3 with 802.2 LLC and SNAP headers |
 | `eth-ii` | Ethernet II | Ethernet II |
 
-## Advanced topic: TCP/IP over IPX
+## Advanced topic: TCP/IP over IPX (ipxpkt)
 
 Much DOS software that communicates over the network (particularly using the
 TCP/IP protocol stack used on the Internet) uses the
@@ -167,25 +167,32 @@ Some forks of DOSbox can emulate the Novell NE2000 card, allowing such
 software to be used. However, vanilla DOSbox at the time of writing does not
 include this feature. Furthermore, it typically requires granting DOSbox
 special permission to be able to send and receive raw network packets.
-The [`ipxpkt.com`](ipxpkt/driver/) driver is a packet driver that tunnels an
-Ethernet link over IPX packets, and ipxbox includes support for its protocol.
-This allows DOSbox users to use packet driver-based software.
+
+The [`ipxpkt.com`](module/ipxpkt/driver/) driver is a packet driver that
+tunnels an Ethernet link over IPX packets, and ipxbox includes support for its
+protocol. This allows DOSbox users to use packet driver-based software.
 
 **First, a word of warning**: the DOSBox IPX protocol is completely insecure.
 There's no encryption or authentication supported, and enabling this feature
-gives a potential backdoor into the network where the ipxbox server is running.
-If you don't understand the implications of this, don't enable this feature
-on a public-facing ipxbox server.
+gives a backdoor into the network where the ipxbox server is running. If you
+don't understand the implications of this, don't enable this feature on a
+public-facing ipxbox server.
 
 To use this feature:
 
-1. First set up an IPX bridge by following the instructions from the previous
-section.
+1. Install the [`libslirp-helper`](https://packages.debian.org/sid/libslirp-helper)
+package (on Debian; it is available on other Linux distros too).
+
+    - libslirp provides a connection to a simulated network without
+      requiring any special permissions. Alternatively, you can bridge the
+      ipxpkt packets to a real, physical network. Follow the instructions
+      from the previous section about setting up an IPX bridge, but use the
+      `--ipxpkt_bridge` flag instead of `--bridge`.
 
 2. Read the warning in the paragraph above this list. Then add
 `--enable_ipxpkt` to the ipxbox command line. For example:
 ```
-./ipxbox --port=10000 --bridge=pcap:eth0 --enable_ipxpkt
+./ipxbox --port=10000 --enable_ipxpkt
 ```
 3. Start a DOSbox client and connect to the server as normal. Make sure to
 mount a directory containing the [`ipxpkt.com`](ipxpkt/driver/) driver.
