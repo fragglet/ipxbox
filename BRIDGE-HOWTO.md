@@ -18,8 +18,9 @@ There are two ways to set things up: `ipxbox` can either create a
 [TAP device](https://en.wikipedia.org/wiki/TUN/TAP) or use
 [`libpcap`](https://en.wikipedia.org/wiki/Pcap)
 to connect to a real Ethernet device. If you don't know what this means,
-you'll want to use the `libpcap` approach, which is what the following
-instructions describe.
+you'll want to use the `libpcap` approach.
+
+## Bridging with libpcap
 
 Find out which Ethernet interface (network card) you want to use by using the
 Linux `ifconfig` command. Usually the interface will be named something like
@@ -49,8 +50,40 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 05:08:48.529183 IPX 00000000.02:cf:0d:86:54:e5.4002 > 00000000.ff:ff:ff:ff:ff:ff.6590: ipx-#6590 16
 05:08:48.888311 IPX 00000000.02:cf:0d:86:54:e5.0002 > 00000000.02:ff:ff:ff:00:00.0002: ipx-#2 0
 ```
-To use TAP, specify `--bridge=tap` instead.
 
+## Using a TAP device
+
+To use TAP, specify `--bridge=tap` instead. For example:
+```
+./ipxbox --bridge=tap
+```
+creates a new network device while the server is running:
+```
+$ ifconfig -a
+tap0: flags=4098<BROADCAST,MULTICAST>  mtu 1500
+        ether 9e:db:a8:4b:d2:19  txqueuelen 1000  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+```
+Note that the TAP device will be down by default and you will need to bring
+it up yourself with `ifconfig tap0 up`.
+
+You can also specify the name; for example:
+```
+./ipxbox --bridge=tap:blerg
+```
+produces:
+```
+$ ifconfig -a
+blerg: flags=4098<BROADCAST,MULTICAST>  mtu 1500
+        ether 16:91:8d:c6:d1:4c  txqueuelen 1000  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+```
 ## Configuring frame type
 
 After following the above instructions you might find problems getting a
