@@ -3,6 +3,7 @@
 package phys
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/google/gopacket"
@@ -57,5 +58,18 @@ func NewTap(cfg water.Config) (*tapWrapper, error) {
 }
 
 func openTap(arg string, captureNonIPX bool) (DuplexEthernetStream, error) {
-	return NewTap(water.Config{})
+	cfg := water.Config{}
+	if arg != "" {
+		// We allow the name for the TAP device to be specified. But
+		// depending on the OS, the PlatformSpecificParams struct does
+		// not always contain a Name field. So we set it through
+		// reflection (avoiding convoluted build shenanigans):
+		psp := reflect.ValueOf(&cfg.PlatformSpecificParams).Elem()
+		if _, ok := psp.Type().FieldByName("Name"); !ok {
+			panic("water.PlatformSpecificParams has no name field on this OS")
+		}
+		psp.FieldByName("Name").SetString(arg)
+		// TODO: Allow other parameters to be set, too?
+	}
+	return NewTap(cfg)
 }
