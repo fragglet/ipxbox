@@ -37,9 +37,16 @@ var (
 )
 
 func makePcapWriter() *pcapgo.Writer {
-	f, err := os.Create(*dumpPackets)
-	if err != nil {
-		log.Fatalf("failed to open pcap file for write: %v", err)
+	var f *os.File
+	// eg. `ipxbox --dump_packets /dev/stdout | tcpdump -nlr -`
+	if *dumpPackets == "-" {
+		f = os.Stdout
+	} else {
+		var err error
+		f, err = os.Create(*dumpPackets)
+		if err != nil {
+			log.Fatalf("failed to open pcap file for write: %v", err)
+		}
 	}
 	w := pcapgo.NewWriter(f)
 	w.WriteFileHeader(1500, layers.LinkTypeEthernet)
