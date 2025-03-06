@@ -34,6 +34,10 @@ func (c *SlirpProcess) runConnection(helperPath string, conn *net.UnixConn) {
 		helperPath,
 		"--exit-with-parent",
 		"--fd=3", // See Files[] array below
+		// The main use for the Slirp backend is tunnelling inside IPX frames
+		// (the ipxpkt driver), so we want to keep the MTU small and avoid
+		// fragmentation:
+		"--mtu=576",
 	}
 	p, err := os.StartProcess(helperPath, args, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr, connFile},
