@@ -195,7 +195,6 @@ TCP/IP protocol stack used on the Internet) uses the
 [packet driver](https://en.wikipedia.org/wiki/PC/TCP_Packet_Driver) interface.
 There are packet drivers available for most network cards, providing a
 standard interface for sending and receiving data over the network.
-
 Some forks of DOSbox can emulate the Novell NE2000 card, allowing such
 software to be used. However, vanilla DOSbox at the time of writing does not
 include this feature. Furthermore, it typically requires granting DOSbox
@@ -203,7 +202,9 @@ special permission to be able to send and receive raw network packets.
 
 The [`ipxpkt.com`](module/ipxpkt/driver/) driver is a packet driver that
 tunnels an Ethernet link over IPX packets, and ipxbox includes support for its
-protocol. This allows DOSbox users to use packet driver-based software.
+protocol. This allows you to use packet driver-based software from within
+vanilla DOSbox; you can [see a demo video
+here](https://www.youtube.com/watch?v=5VeVaFbORhI).
 
 **First, a word of warning**: the DOSBox IPX protocol is completely insecure.
 There's no encryption or authentication supported, and enabling this feature

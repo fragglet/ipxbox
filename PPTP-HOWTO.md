@@ -5,6 +5,8 @@ Me. If you have a retro computer running one of these operating systems,
 you can therefore use this feature to connect to a server and play with
 DOSbox clients (or others using PPTP as well).
 
+You can [see a demo video here](https://www.youtube.com/watch?v=ut37z6EE5Hc).
+
 ## Client setup
 
 First check that the `ipxbox` server you're connecting to has PPTP
