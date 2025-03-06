@@ -249,8 +249,9 @@ My Ethernet address is 02:57:04:31:68:FA
 C:\>
 ```
 5. Test the connection is working correctly by trying some software that uses
-the packet driver interface. The [mTCP stack](http://www.brutman.com/mTCP/)
-makes for a good first step. For example:
+the packet driver interface (but don't use `ping` because it won't work in
+Slirp). The [mTCP stack](http://www.brutman.com/mTCP/) makes for a good first
+step. For example:
 ```
 C:\>set mtcpcfg=c:\mtcp\mtcp.cfg
 C:\>dhcp
@@ -265,26 +266,40 @@ DHCP request sent, attempt 1: Offer received, Acknowledged
 
 Good news everyone!
 
-IPADDR 192.168.128.45
-NETMASK 255.255.0.0
-GATEWAY 192.168.60.1
-NAMESERVER 8.8.8.8
+IPADDR 10.0.2.15
+NETMASK 255.255.255.0
+GATEWAY 10.0.2.2
+NAMESERVER 10.0.2.3
 LEASE_TIME 86400 seconds
 
 Settings written to 'c:\mtcp\mtcp.cfg'
 
-C:\>ping 8.8.8.8
+C:\>ftp ftp.freebsd.org
 
-mTCP Ping by M Brutman (mbbrutman@gmail.com) (C)opyright 2009-2020
-Version: Mar  7 2020
+mTCP FTP by M Brutman (mbbrutman@gmail.com) (C)opyright 2008-2025
+Version: Jan 10 2025
 
-ICMP Packet payload is 32 bytes.
+FTP server resolved in 0.00 seconds
 
-Packet sequence number 0 received in 45.90 ms, ttl=114
-Packet sequence number 1 received in 44.20 ms, ttl=114
-Packet sequence number 2 received in 41.65 ms, ttl=114
-Packet sequence number 3 received in 54.40 ms, ttl=114
+Opening control connection to 96.47.72.116:21 with local port 1914
+Connected
 
-Packets sent: 4, Replies received: 4, Replies lost: 0
-Average time for a reply: 46.53 ms (not counting lost packets)
+220 This is ftp0.nyi.freebsd.org - hosted at NYI.net.
+Userid: anonymous
+331 Please specify the password.
+Password:
+230-
+230-This is ftp0.nyi.FreeBSD.org, graciously hosted by
+230-365 Data Centers - 365DataCenters.com
+230-
+230-FreeBSD files can be found in the /pub/FreeBSD directory.
+230-
+230 Login successful.
+
+Setting the server file transfer mode to BIN
+200 Switching to Binary mode.
+File transfer mode set to BIN.
+
+--> quit
+221 Goodbye.
 ```
