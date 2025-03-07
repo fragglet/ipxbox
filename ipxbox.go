@@ -4,14 +4,17 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
-	"github.com/fragglet/ipxbox/ipxpkt"
+	"github.com/fragglet/ipxbox/module"
+	"github.com/fragglet/ipxbox/module/aggregate"
+	"github.com/fragglet/ipxbox/module/bridge"
+	"github.com/fragglet/ipxbox/module/ipxpkt"
+	"github.com/fragglet/ipxbox/module/pptp"
+	"github.com/fragglet/ipxbox/module/qproxy"
+	"github.com/fragglet/ipxbox/module/server"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
@@ -19,11 +22,6 @@ import (
 	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
-	"github.com/fragglet/ipxbox/ppp/pptp"
-	"github.com/fragglet/ipxbox/qproxy"
-	"github.com/fragglet/ipxbox/server"
-	"github.com/fragglet/ipxbox/server/dosbox"
-	"github.com/fragglet/ipxbox/server/uplink"
 	"github.com/fragglet/ipxbox/syslog"
 
 	"github.com/google/gopacket/layers"
@@ -31,34 +29,24 @@ import (
 )
 
 var (
-	dumpPackets    = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
-	port           = flag.Int("port", 10000, "UDP port to listen on.")
-	clientTimeout  = flag.Duration("client_timeout", 10*time.Minute, "Time of inactivity before disconnecting clients.")
-	allowNetBIOS   = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
-	enableIpxpkt   = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network (requires --enable_tap or --pcap_device)")
-	enableSyslog   = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
-	quakeServers   = flag.String("quake_servers", "", "Proxy to the given list of Quake UDP servers in a way that makes them accessible over IPX.")
-	enablePPTP     = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
-	uplinkPassword = flag.String("uplink_password", "", "Password to permit uplink clients to connect. If empty, uplink is not supported.")
+	dumpPackets  = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
+	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
+	enableSyslog = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
+	enableIpxpkt = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network")
+	enablePPTP   = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
 
-func addQuakeProxies(ctx context.Context, net network.Network) {
-	if *quakeServers == "" {
-		return
-	}
-	for _, addr := range strings.Split(*quakeServers, ",") {
-		p := qproxy.New(&qproxy.Config{
-			Address:     addr,
-			IdleTimeout: *clientTimeout,
-		}, net.NewNode())
-		go p.Run(ctx)
-	}
-}
-
 func makePcapWriter() *pcapgo.Writer {
-	f, err := os.Create(*dumpPackets)
-	if err != nil {
-		log.Fatalf("failed to open pcap file for write: %v", err)
+	var f *os.File
+	// eg. `ipxbox --dump_packets /dev/stdout | tcpdump -nlr -`
+	if *dumpPackets == "-" {
+		f = os.Stdout
+	} else {
+		var err error
+		f, err = os.Create(*dumpPackets)
+		if err != nil {
+			log.Fatalf("failed to open pcap file for write: %v", err)
+		}
 	}
 	w := pcapgo.NewWriter(f)
 	w.WriteFileHeader(1500, layers.LinkTypeEthernet)
@@ -102,7 +90,16 @@ func makeNetwork(ctx context.Context) (network.Network, network.Network) {
 }
 
 func main() {
-	physFlags := phys.RegisterFlags()
+	mainmod := aggregate.MakeModule(
+		module.Optional(ipxpkt.Module, enableIpxpkt),
+		module.Optional(pptp.Module, enablePPTP),
+		bridge.Module,
+		qproxy.Module,
+		server.Module,
+	)
+
+	mainmod.Initialize()
+
 	flag.Parse()
 
 	ctx := context.Background()
@@ -119,60 +116,12 @@ func main() {
 
 	net, uplinkable := makeNetwork(ctx)
 
-	physLink, err := physFlags.MakePhys(*enableIpxpkt)
-	if err != nil {
-		log.Fatalf("failed to set up physical network: %v", err)
-	} else if physLink != nil {
-		port := uplinkable.NewNode()
-		go physLink.Run()
-		go ipx.DuplexCopyPackets(ctx, physLink, port)
-	}
-	if *enableIpxpkt {
-		r := ipxpkt.NewRouter(net.NewNode())
-		var tapConn phys.DuplexEthernetStream
-		if physLink != nil {
-			tapConn = physLink.NonIPX()
-			log.Printf("Using physical network tap for ipxpkt router")
-		} else {
-			tapConn, err = phys.MakeSlirp()
-			if err != nil {
-				log.Fatalf("failed to open libslirp subprocess: %v.\nYou may need to install libslirp-helper, or alternatively use -enable_tap or -pcap_device.", err)
-			}
-			log.Printf("Using Slirp subprocess for ipxpkt router")
-		}
-		go phys.CopyFrames(r, tapConn)
-	}
-	addQuakeProxies(ctx, net)
-	if *enablePPTP {
-		pptps, err := pptp.NewServer(net)
-		if err != nil {
-			log.Fatalf("failed to start PPTP server: %v", err)
-		}
-		go pptps.Run(ctx)
-	}
-
-	protocols := []server.Protocol{
-		&dosbox.Protocol{
-			Logger:        logger,
-			Network:       net,
-			KeepaliveTime: 5 * time.Second,
-		},
-	}
-	if *uplinkPassword != "" {
-		protocols = append(protocols, &uplink.Protocol{
-			Logger:        logger,
-			Network:       uplinkable,
-			Password:      *uplinkPassword,
-			KeepaliveTime: 5 * time.Second,
-		})
-	}
-	s, err := server.New(fmt.Sprintf(":%d", *port), &server.Config{
-		Protocols:     protocols,
-		ClientTimeout: *clientTimeout,
-		Logger:        logger,
+	err := mainmod.Start(ctx, &module.Parameters{
+		Network:    net,
+		Uplinkable: uplinkable,
+		Logger:     logger,
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("server terminated with error: %v", err)
 	}
-	s.Run(ctx)
 }

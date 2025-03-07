@@ -19,7 +19,8 @@ import (
 const maxConnectAttempts = 5
 
 var (
-	_ = (network.Node)(&client{})
+	_ = (network.Node)(&connection{})
+	_ = (network.Network)(&Client{})
 )
 
 type connectFailure struct {
@@ -34,26 +35,26 @@ func (cf *connectFailure) Unwrap() error {
 	return os.ErrDeadlineExceeded
 }
 
-type client struct {
+type connection struct {
 	inner  ipx.ReadWriteCloser
 	rxpipe ipx.ReadWriteCloser
 	addr   ipx.Addr
 }
 
-func (c *client) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
+func (c *connection) ReadPacket(ctx context.Context) (*ipx.Packet, error) {
 	return c.rxpipe.ReadPacket(ctx)
 }
 
-func (c *client) WritePacket(packet *ipx.Packet) error {
+func (c *connection) WritePacket(packet *ipx.Packet) error {
 	return c.inner.WritePacket(packet)
 }
 
-func (c *client) Close() error {
+func (c *connection) Close() error {
 	c.rxpipe.Close()
 	return c.inner.Close()
 }
 
-func (c *client) GetProperty(x interface{}) bool {
+func (c *connection) GetProperty(x interface{}) bool {
 	switch x.(type) {
 	case *ipx.Addr:
 		*x.(*ipx.Addr) = c.addr
@@ -63,7 +64,7 @@ func (c *client) GetProperty(x interface{}) bool {
 	}
 }
 
-func (c *client) sendPingReply(addr *ipx.Addr) {
+func (c *connection) sendPingReply(addr *ipx.Addr) {
 	c.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
 			Dest: ipx.HeaderAddr{
@@ -82,7 +83,7 @@ func isPing(hdr *ipx.Header) bool {
 	return hdr.Dest.Addr == ipx.AddrBroadcast && hdr.Dest.Socket == 2
 }
 
-func (c *client) recvLoop(ctx context.Context) {
+func (c *connection) recvLoop(ctx context.Context) {
 	for {
 		packet, err := c.inner.ReadPacket(ctx)
 		if errors.Is(err, io.ErrClosedPipe) {
@@ -156,7 +157,7 @@ func Dial(ctx context.Context, addr string) (network.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &client{
+	c := &connection{
 		inner:  udp,
 		rxpipe: pipe.New(),
 	}
@@ -166,4 +167,16 @@ func Dial(ctx context.Context, addr string) (network.Node, error) {
 	}
 	go c.recvLoop(context.Background())
 	return c, nil
+}
+
+// Client is an implementation of network.Network that creates a new connection
+// to a remote dosbox server for every new node created.
+type Client struct {
+	// TODO: It's bad practice to save a context in a struct:
+	Context context.Context
+	Address string
+}
+
+func (c *Client) NewNode() (network.Node, error) {
+	return Dial(c.Context, c.Address)
 }

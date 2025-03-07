@@ -2,13 +2,17 @@
 package network
 
 import (
+	"log"
+
 	"github.com/fragglet/ipxbox/ipx"
 )
 
 // Network represents the concept of an IPX network.
 type Network interface {
-	// NewNode creates a new network node.
-	NewNode() Node
+	// NewNode creates a new network node. If the network is located on
+	// the end of a network link, this function may block for some time
+	// until it completes.
+	NewNode() (Node, error)
 }
 
 // Node represents a node attached to an IPX network.
@@ -30,4 +34,15 @@ func NodeAddress(n Node) ipx.Addr {
 		return ipx.AddrNull
 	}
 	return result
+}
+
+// MustMakeNode is a convenience function that calls `NewNode()` but aborts
+// the program if it fails. This should only ever be used at program startup
+// or in test code.
+func MustMakeNode(net Network) Node {
+	node, err := net.NewNode()
+	if err != nil {
+		log.Fatalf("failed to create network node: %v", err)
+	}
+	return node
 }

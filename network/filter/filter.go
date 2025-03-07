@@ -74,8 +74,12 @@ type filteringNetwork struct {
 	inner network.Network
 }
 
-func (n *filteringNetwork) NewNode() network.Node {
-	return &filter{inner: n.inner.NewNode()}
+func (n *filteringNetwork) NewNode() (network.Node, error) {
+	node, err := n.inner.NewNode()
+	if err != nil {
+		return nil, err
+	}
+	return &filter{inner: node}, nil
 }
 
 // Wrap creates a network that wraps the given network but rejects packets

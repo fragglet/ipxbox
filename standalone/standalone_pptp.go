@@ -1,6 +1,5 @@
-// Package main implements a standalone proxy that connects to a DOSbox
-// server and translates IPX packets into UDP packets that are forwarded
-// to a UDP Quake server.
+// Package main implements a standalone PPTP server, passing through all
+// connections to a remote DOSbox server.
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 
 	"github.com/fragglet/ipxbox/client/dosbox"
 	"github.com/fragglet/ipxbox/module"
-	"github.com/fragglet/ipxbox/module/qproxy"
+	"github.com/fragglet/ipxbox/module/pptp"
 )
 
 var (
@@ -20,7 +19,7 @@ var (
 func main() {
 	ctx := context.Background()
 
-	mod := qproxy.Module
+	mod := pptp.Module
 	mod.Initialize()
 	flag.Parse()
 

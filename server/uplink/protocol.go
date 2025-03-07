@@ -153,9 +153,12 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 	if _, err := rand.Read(c.challenge); err != nil {
 		return err
 	}
-	go c.sendKeepalives(ctx)
+	node, err := p.Network.NewNode()
+	if err != nil {
+		return err
+	}
 
-	node := p.Network.NewNode()
+	go c.sendKeepalives(ctx)
 	defer func() {
 		node.Close()
 		statsString := stats.Summary(node)
