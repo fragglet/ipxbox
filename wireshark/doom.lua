@@ -46,6 +46,7 @@ function doom.dissector(tvbuf, pktinfo, root)
     end
 
     local tree = root:add(doom, tvbuf:range(0,pktlen))
+    local pkt_bytes = tvbuf:bytes()
 
     local flags_range = tvbuf:range(0, 4)
     local flag_tree = tree:add_le(doom_flags, flags_range)
@@ -55,14 +56,25 @@ function doom.dissector(tvbuf, pktinfo, root)
     flag_tree:add_le(doom_flag_setup, flags_range)
     flag_tree:add_le(doom_flag_kill, flags_range)
 
+    if (pkt_bytes:le_uint(0, 4) & NCMD_SETUP) ~= 0 then
+        pktinfo.cols.info:set("Game start packet")
+        return
+    end
+
     tree:add(doom_retransmitfrom, tvbuf:range(4, 1))
     tree:add(doom_starttic, tvbuf:range(5, 1))
     tree:add(doom_player, tvbuf:range(6, 1))
     tree:add(doom_numtics, tvbuf:range(7, 1))
 
-    local pkt_bytes = tvbuf:bytes()
     local starttic = pkt_bytes:get_index(5)
     local numtics = pkt_bytes:get_index(7)
+
+    pktinfo.cols.info:set("Game data")
+    if numtics == 1 then
+        pktinfo.cols.info:append(string.format(": tic %d", starttic))
+    else
+        pktinfo.cols.info:append(string.format(": tics %d-%d", starttic, starttic + numtics - 1))
+    end
 
     local tics_range = tvbuf(8)
     for i = 0, numtics-1 do
@@ -113,6 +125,10 @@ function doom_ipx.dissector(tvbuf, pktinfo, root)
     tree:add_le(ipxsetup_tail, tvbuf:range(pktlen - 4, 4))
 
     if pkt_bytes:uint(0, 4) == 0xffffffff then
+        pktinfo.cols.info:set(
+            string.format("Game setup packet: %d/%d nodes found",
+                          pkt_bytes:le_uint(8, 2),
+                          pkt_bytes:le_uint(10, 2)))
         tree:add_le(ipxsetup_gameid, tvbuf:range(4, 2))
         tree:add_le(ipxsetup_drone, tvbuf:range(6, 2))
         tree:add_le(ipxsetup_nodesfound, tvbuf:range(8, 2))
