@@ -85,7 +85,16 @@ local doom_ipx = Proto("doom_ipx", "Doom IPX protocol")
 local ipxsetup_seq = ProtoField.uint32("doom_ipx.ipxsetup_seq", "ipxsetup sequence ID")
 local ipxsetup_tail = ProtoField.uint32("doom_ipx.ipxsetup_tail", "ipxsetup tailing bytes (always zero)")
 
-doom_ipx.fields = { ipxsetup_seq, ipxsetup_tail }
+local ipxsetup_gameid = ProtoField.uint16("doom_ipx.gameid", "Game ID (unused)")
+local ipxsetup_drone = ProtoField.uint16("doom_ipx.drone", "Drone (unused)")
+local ipxsetup_nodesfound = ProtoField.uint16("doom_ipx.nodesfound", "Number of nodes found")
+local ipxsetup_nodeswanted = ProtoField.uint16("doom_ipx.nodeswanted", "Number of nodes wanted")
+local ipxsetup_dupwanted = ProtoField.uint16("doom_ipx.dupwanted", "Ticdup wanted (xttl extension)")
+local ipxsetup_plnumwanted = ProtoField.uint16("doom_ipx.plnumwanted", "Player number wanted (xttl extension)")
+
+doom_ipx.fields = { ipxsetup_seq, ipxsetup_tail, ipxsetup_gameid,
+                    ipxsetup_drone, ipxsetup_nodesfound, ipxsetup_nodeswanted,
+                    ipxsetup_dupwanted, ipxsetup_plnumwanted }
 
 function doom_ipx.dissector(tvbuf, pktinfo, root)
     pktinfo.cols.protocol:set("Doom IPX protocol")
@@ -98,10 +107,23 @@ function doom_ipx.dissector(tvbuf, pktinfo, root)
         return
     end
 
+    local pkt_bytes = tvbuf:bytes()
     local tree = root:add(doom_ipx, tvbuf:range(0, 4))
     tree:add_le(ipxsetup_seq, tvbuf:range(0, 4))
     tree:add_le(ipxsetup_tail, tvbuf:range(pktlen - 4, 4))
-    doom.dissector(tvbuf(4, pktlen - 8):tvb(), pktinfo, root)
+
+    if pkt_bytes:uint(0, 4) == 0xffffffff then
+        tree:add_le(ipxsetup_gameid, tvbuf:range(4, 2))
+        tree:add_le(ipxsetup_drone, tvbuf:range(6, 2))
+        tree:add_le(ipxsetup_nodesfound, tvbuf:range(8, 2))
+        tree:add_le(ipxsetup_nodeswanted, tvbuf:range(10, 2))
+        if pktlen >= 20 then
+            tree:add_le(ipxsetup_dupwanted, tvbuf:range(12, 2))
+            tree:add_le(ipxsetup_plnumwanted, tvbuf:range(14, 2))
+        end
+    else
+        doom.dissector(tvbuf(4, pktlen - 8):tvb(), pktinfo, root)
+    end
 end
 
 DissectorTable.get("ipx.socket"):add(0x869b, doom_ipx)
