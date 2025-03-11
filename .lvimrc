@@ -3,3 +3,6 @@ setlocal tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab smartindent nocindent
 if &ft == "markdown"
 	setlocal softtabstop=4 shiftwidth=4 expandtab smartindent nocindent
 endif
+if &ft == "lua"
+	setlocal softtabstop=4 shiftwidth=4 expandtab smartindent nocindent
+endif
