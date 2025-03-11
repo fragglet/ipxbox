@@ -1,12 +1,18 @@
 
+local NCMD_EXIT = 0x80000000
+local NCMD_RETRANSMIT = 0x40000000
+local NCMD_SETUP = 0x20000000
+local NCMD_KILL = 0x10000000
+local NCMD_CHECKSUM = 0x0fffffff
+
 local doom = Proto("doom", "Doom netgame protocol")
 
 local doom_flags = ProtoField.new("Flags", "doom.flags", ftypes.UINT32, nil, base.HEX)
-local doom_flag_exit = ProtoField.bool("doom.flag_exit", "Exit", 32, nil, 0x00000080)
-local doom_flag_retransmit = ProtoField.bool("doom.flag_retransmit", "Requesting retransmit", 32, nil, 0x00000040)
-local doom_flag_setup = ProtoField.bool("doom.flag_setup", "Setup packet", 32, nil, 0x00000020)
-local doom_flag_kill = ProtoField.bool("doom.flag_kill", "Kill game", 32, nil, 0x00000010)
-local doom_flag_checksum = ProtoField.uint32("doom.checksum", "Packet checksum", base.HEX, nil, 0xffffff0f)
+local doom_flag_exit = ProtoField.bool("doom.flag_exit", "Exit", 32, nil, NCMD_EXIT)
+local doom_flag_retransmit = ProtoField.bool("doom.flag_retransmit", "Requesting retransmit", 32, nil, NCMD_RETRANSMIT)
+local doom_flag_setup = ProtoField.bool("doom.flag_setup", "Setup packet", 32, nil, NCMD_SETUP)
+local doom_flag_kill = ProtoField.bool("doom.flag_kill", "Kill game", 32, nil, NCMD_KILL)
+local doom_flag_checksum = ProtoField.uint32("doom.checksum", "Packet checksum", base.HEX, nil, NCMD_CHECKSUM)
 
 local doom_retransmitfrom = ProtoField.uint8("doom.retransmitfrom", "Retransmit start tic#")
 local doom_starttic = ProtoField.uint8("doom.starttic", "First tic in packet (low byte)")
@@ -42,12 +48,12 @@ function doom.dissector(tvbuf, pktinfo, root)
     local tree = root:add(doom, tvbuf:range(0,pktlen))
 
     local flags_range = tvbuf:range(0, 4)
-    local flag_tree = tree:add(doom_flags, flags_range)
-    flag_tree:add(doom_flag_checksum, flags_range)
-    flag_tree:add(doom_flag_exit, flags_range)
-    flag_tree:add(doom_flag_retransmit, flags_range)
-    flag_tree:add(doom_flag_setup, flags_range)
-    flag_tree:add(doom_flag_kill, flags_range)
+    local flag_tree = tree:add_le(doom_flags, flags_range)
+    flag_tree:add_le(doom_flag_checksum, flags_range)
+    flag_tree:add_le(doom_flag_exit, flags_range)
+    flag_tree:add_le(doom_flag_retransmit, flags_range)
+    flag_tree:add_le(doom_flag_setup, flags_range)
+    flag_tree:add_le(doom_flag_kill, flags_range)
 
     tree:add(doom_retransmitfrom, tvbuf:range(4, 1))
     tree:add(doom_starttic, tvbuf:range(5, 1))
@@ -84,7 +90,7 @@ doom_ipx.fields = { ipxsetup_seq, ipxsetup_tail }
 function doom_ipx.dissector(tvbuf, pktinfo, root)
     pktinfo.cols.protocol:set("Doom IPX protocol")
 
-    local pktlen = tvbuf:reported_length_remaining()
+    local pktlen = tvbuf:captured_len()
 
     if pktlen < 8 then
         -- TODO: Add expert info
@@ -93,8 +99,8 @@ function doom_ipx.dissector(tvbuf, pktinfo, root)
     end
 
     local tree = root:add(doom_ipx, tvbuf:range(0, 4))
-    tree:add(ipxsetup_seq, tvbuf:range(0, 4))
-    tree:add(ipxsetup_tail, tvbuf:range(pktlen - 4, 4))
+    tree:add_le(ipxsetup_seq, tvbuf:range(0, 4))
+    tree:add_le(ipxsetup_tail, tvbuf:range(pktlen - 4, 4))
     doom.dissector(tvbuf(4, pktlen - 8):tvb(), pktinfo, root)
 end
 
