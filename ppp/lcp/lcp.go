@@ -92,7 +92,7 @@ func (d *ConfigureData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (d *ConfigureData) MarshalBinary() (data []byte, err error) {
+func (d *ConfigureData) MarshalBinary() ([]byte, error) {
 	result := []byte{}
 	for _, opt := range d.Options {
 		result = append(result, byte(opt.Type), uint8(len(opt.Data)+2))
@@ -111,7 +111,7 @@ func (d *TerminateData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (d *TerminateData) MarshalBinary() (data []byte, err error) {
+func (d *TerminateData) MarshalBinary() ([]byte, error) {
 	return d.Data, nil
 }
 
@@ -130,7 +130,7 @@ func (d *EchoData) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (d *EchoData) MarshalBinary() (data []byte, err error) {
+func (d *EchoData) MarshalBinary() ([]byte, error) {
 	result := []byte{0, 0, 0, 0}
 	binary.BigEndian.PutUint32(result[:], d.MagicNumber)
 	result = append(result, d.Data...)
@@ -200,7 +200,7 @@ func (l *LCP) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (l *LCP) MarshalBinary() (data []byte, err error) {
+func (l *LCP) MarshalBinary() ([]byte, error) {
 	var extraBytes []byte
 	if l.Data != nil {
 		var err error
