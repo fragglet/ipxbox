@@ -132,7 +132,7 @@ func (d *EchoData) UnmarshalBinary(data []byte) error {
 
 func (d *EchoData) MarshalBinary() (data []byte, err error) {
 	result := []byte{0, 0, 0, 0}
-	binary.BigEndian.PutUint32(data[:], d.MagicNumber)
+	binary.BigEndian.PutUint32(result[:], d.MagicNumber)
 	result = append(result, d.Data...)
 	return result, nil
 }
