@@ -63,7 +63,7 @@ func (f *filter) Close() error {
 	return f.inner.Close()
 }
 
-func (f *filter) GetProperty(x interface{}) bool {
+func (f *filter) GetProperty(x any) bool {
 	if node, ok := f.inner.(network.Node); ok {
 		return node.GetProperty(x)
 	}

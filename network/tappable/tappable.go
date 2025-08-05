@@ -80,7 +80,7 @@ func (n *node) Close() error {
 	return n.inner.Close()
 }
 
-func (n *node) GetProperty(x interface{}) bool {
+func (n *node) GetProperty(x any) bool {
 	return n.inner.GetProperty(x)
 }
 

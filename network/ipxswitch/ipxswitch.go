@@ -52,7 +52,7 @@ func (n *node) WritePacket(packet *ipx.Packet) error {
 	return n.net.forwardPacket(packet, n)
 }
 
-func (n *node) GetProperty(x interface{}) bool {
+func (n *node) GetProperty(x any) bool {
 	return false
 }
 

@@ -198,7 +198,7 @@ func (n *FakeNetwork) Close() error {
 	return nil
 }
 
-func (n *FakeNetwork) GetProperty(value interface{}) bool {
+func (n *FakeNetwork) GetProperty(value any) bool {
 	switch value.(type) {
 	case *ipx.Addr:
 		*value.(*ipx.Addr) = n.Address

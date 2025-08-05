@@ -29,7 +29,7 @@ func (f *fakeNetwork) NewNode() (network.Node, error) {
 	return f, nil
 }
 
-func (f *fakeNetwork) GetProperty(value interface{}) bool {
+func (f *fakeNetwork) GetProperty(value any) bool {
 	return false
 }
 

@@ -109,7 +109,7 @@ func New(addr string, c *Config) (*Server, error) {
 	}, nil
 }
 
-func (s *Server) log(format string, args ...interface{}) {
+func (s *Server) log(format string, args ...any) {
 	if s.config.Logger != nil {
 		s.config.Logger.Printf(format, args...)
 	}

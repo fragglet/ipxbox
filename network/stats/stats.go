@@ -79,7 +79,7 @@ func (n *node) Close() error {
 	return n.inner.Close()
 }
 
-func (n *node) GetProperty(x interface{}) bool {
+func (n *node) GetProperty(x any) bool {
 	switch x.(type) {
 	case *Statistics:
 		*x.(*Statistics) = n.stats

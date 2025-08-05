@@ -23,7 +23,7 @@ type Node interface {
 	// network implementations may consist of many layers, this will
 	// query through the layers to fetch the property. If successful,
 	// true is returned.
-	GetProperty(value interface{}) bool
+	GetProperty(value any) bool
 }
 
 // NodeAddress returns the IPX address assigned too the given node, or it

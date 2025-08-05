@@ -33,7 +33,7 @@ type Config struct {
 	IdleTimeout time.Duration
 }
 
-func debug(fmt string, args ...interface{}) {
+func debug(fmt string, args ...any) {
 	//log.Printf(fmt, args...)
 }
 

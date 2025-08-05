@@ -54,7 +54,7 @@ func (c *connection) Close() error {
 	return c.inner.Close()
 }
 
-func (c *connection) GetProperty(x interface{}) bool {
+func (c *connection) GetProperty(x any) {
 	switch x.(type) {
 	case *ipx.Addr:
 		*x.(*ipx.Addr) = c.addr

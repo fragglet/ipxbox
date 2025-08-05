@@ -120,7 +120,7 @@ type Protocol struct {
 	KeepaliveTime time.Duration
 }
 
-func (p *Protocol) log(format string, args ...interface{}) {
+func (p *Protocol) log(format string, args ...any) {
 	if p.Logger != nil {
 		p.Logger.Printf(format, args...)
 	}
