@@ -3,6 +3,7 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/fragglet/ipxbox)
 ![GitHub License](https://img.shields.io/github/license/fragglet/ipxbox)
 ![GitHub repo size](https://img.shields.io/github/repo-size/fragglet/ipxbox)
+[![GitHub Repo stars](https://img.shields.io/github/stars/fragglet/ipxbox)](https://github.com/fragglet/ipxbox/stargazers)
 
 ![ipxbox icon](images/ipxbox4x.png)
 
