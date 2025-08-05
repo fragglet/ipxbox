@@ -1,5 +1,6 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/fragglet/ipxbox/go.yml)
 [![CodeFactor](https://www.codefactor.io/repository/github/fragglet/ipxbox/badge)](https://www.codefactor.io/repository/github/fragglet/ipxbox)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/fragglet/ipxbox)
 ![GitHub License](https://img.shields.io/github/license/fragglet/ipxbox)
 ![GitHub repo size](https://img.shields.io/github/repo-size/fragglet/ipxbox)
 
