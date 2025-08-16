@@ -138,8 +138,9 @@ func handshakeConnect(ctx context.Context, c ipx.ReadWriteCloser, addr string) (
 			connectAttempts++
 			nextSendTime = now.Add(time.Second)
 		}
-		subctx, _ := context.WithDeadline(ctx, nextSendTime)
+		subctx, cancel := context.WithDeadline(ctx, nextSendTime)
 		packet, err := c.ReadPacket(subctx)
+		cancel()
 		if errors.Is(err, context.DeadlineExceeded) {
 			continue
 		}
