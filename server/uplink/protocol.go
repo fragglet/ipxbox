@@ -85,8 +85,8 @@ const (
 
 type Message struct {
 	Type      string `json:"message-type"`
-	Challenge []byte `json:"challenge",omitempty`
-	Solution  []byte `json:"solution",omitempty`
+	Challenge []byte `json:"challenge,omitempty"`
+	Solution  []byte `json:"solution,omitempty"`
 }
 
 func (m *Message) Marshal() ([]byte, error) {
