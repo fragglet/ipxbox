@@ -2,6 +2,7 @@ package ipxpkt
 
 import (
 	"encoding"
+	"encoding/binary"
 	"fmt"
 )
 
@@ -23,12 +24,9 @@ type Header struct {
 
 // MarshalBinary populates a slice of bytes from an ipxpkt header.
 func (h *Header) MarshalBinary() ([]byte, error) {
-	return []byte{
-		h.Fragment,
-		h.NumFragments,
-		byte(h.PacketID & 0xff),
-		byte((h.PacketID >> 8) & 0xff),
-	}, nil
+	result := []byte{h.Fragment, h.NumFragments, 0, 0}
+	binary.LittleEndian.PutUint16(result[2:4], h.PacketID)
+	return result, nil
 }
 
 // UnmarshalBinary decodes an ipxpkt header from a slice of bytes.
@@ -38,7 +36,7 @@ func (h *Header) UnmarshalBinary(packet []byte) error {
 	}
 	h.Fragment = packet[0]
 	h.NumFragments = packet[1]
-	h.PacketID = uint16(packet[2]) | uint16(packet[3]<<8)
+	h.PacketID = binary.LittleEndian.Uint16(packet[2:4])
 	if h.Fragment < 1 || h.NumFragments < 1 || h.Fragment > h.NumFragments {
 		return fmt.Errorf("bad ipxpkt header violates invariants: %+v", h)
 	}
