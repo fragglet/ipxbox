@@ -52,6 +52,9 @@ func main() {
 	err = mod.Start(ctx, &module.Parameters{
 		Uplinkable: &fakeNetwork{conn},
 	})
+	if err == module.NotNeeded {
+		log.Fatalf("please specify a device to bridge to using -bridge=")
+	}
 	if err != nil {
 		log.Fatalf("bridge exited with error: %v", err)
 	}
