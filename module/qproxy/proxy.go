@@ -5,7 +5,7 @@ package qproxy
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -33,8 +33,17 @@ type Config struct {
 	IdleTimeout time.Duration
 }
 
+// TODO: Replace with slog.Debug() calls
 func debug(fmt string, args ...any) {
 	//log.Printf(fmt, args...)
+}
+
+func errorAttr(err error) slog.Attr {
+	return slog.String("error", err.Error())
+}
+
+func addrAttr(addr net.Addr) slog.Attr {
+	return slog.String("address", addr.String())
 }
 
 type connection struct {
@@ -83,7 +92,7 @@ func (c *connection) handleAccept(packet []byte, serverAddr *net.UDPAddr) {
 			Port: c.connectedPort,
 		}
 		if _, err := c.conn.WriteToUDP([]byte{}, destAddress); err != nil {
-			log.Printf("error sending firewall traversal packet: %v", err)
+			slog.Error("error sending firewall traversal packet", errorAttr(err))
 		}
 	}
 }
@@ -131,7 +140,9 @@ func (c *connection) receivePackets() {
 		case c.closed:
 			return
 		case err != nil:
-			log.Printf("error receiving UDP packets for connection to %v: %v", c.conn.RemoteAddr(), err)
+			slog.Error("error receiving UDP packets for connection",
+				addrAttr(c.conn.RemoteAddr()),
+				errorAttr(err))
 			return
 		}
 		// Sanity check: packet must come from server's IP address.
@@ -203,7 +214,7 @@ func (p *Proxy) closeConnection(addr *ipx.HeaderAddr) {
 func (p *Proxy) resolveAddress() bool {
 	a, err := net.ResolveUDPAddr("udp", p.config.Address)
 	if err != nil {
-		log.Printf("failed to resolve server address: %v", err)
+		slog.Error("failed to resolve server address", errorAttr(err))
 		return false
 	}
 	p.address = *a
@@ -225,13 +236,17 @@ func (p *Proxy) processPacket(packet *ipx.Packet) {
 		var err error
 		c, err = p.newConnection(&packet.Header.Src)
 		if err != nil {
-			log.Printf("failed to create new connection to %v: %v", p.address, err)
+			slog.Error("failed to create new connection",
+				addrAttr(&p.address),
+				errorAttr(err))
 			return
 		}
 	}
 	c.lastRXTime = time.Now()
 	if _, err := c.conn.WriteToUDP(packet.Payload[quakeHeaderBytes:], &p.address); err != nil {
-		log.Printf("failed to forward IPX packet to UDP server: %v", err)
+		slog.Error("failed to forward IPX packet to UDP server",
+			addrAttr(&p.address),
+			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
 }
@@ -247,7 +262,8 @@ func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 	msg := packet.Payload[quakeHeaderBytes:]
 	eaten, err := c.rs.receiveFromDownstream(msg)
 	if err != nil {
-		log.Printf("error processing packet from downstream: %v", err)
+		slog.Error("error processing packet from downstream",
+			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
 	if eaten {
@@ -255,7 +271,8 @@ func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 		return
 	}
 	if err := c.sendToUpstream(msg); err != nil {
-		log.Printf("failed to forward IPX packet to UDP server: %v", err)
+		slog.Error("failed to forward IPX packet to UDP server",
+			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
 }
@@ -287,7 +304,8 @@ func (p *Proxy) Run(ctx context.Context) {
 		case err == io.ErrClosedPipe:
 			return
 		case err != nil:
-			log.Printf("unexpected error reading from node: %v", err)
+			slog.Error("unexpected error reading from node",
+				errorAttr(err))
 			return
 		}
 
