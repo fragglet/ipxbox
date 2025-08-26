@@ -18,7 +18,7 @@ type Type interface {
 
 var (
 	// TypeNone just discards all log output.
-	TypeNone   = &noneType{}
+	TypeNone = &noneType{}
 
 	// TypeStdout writes log output to stdout.
 	TypeStdout = &stdoutType{}

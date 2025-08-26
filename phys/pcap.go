@@ -1,3 +1,4 @@
+//go:build !nopcap
 // +build !nopcap
 
 package phys

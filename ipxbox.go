@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/fragglet/ipxbox/ipx"
+	"github.com/fragglet/ipxbox/logging"
 	"github.com/fragglet/ipxbox/module"
 	"github.com/fragglet/ipxbox/module/aggregate"
 	"github.com/fragglet/ipxbox/module/bridge"
@@ -15,7 +16,6 @@ import (
 	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/module/qproxy"
 	"github.com/fragglet/ipxbox/module/server"
-	"github.com/fragglet/ipxbox/logging"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
