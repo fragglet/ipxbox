@@ -3,6 +3,7 @@
 package logging
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -34,11 +35,19 @@ var (
 	}
 )
 
+// TODO: Switch to slog.DiscardHandler once we migrate to a newer Go version
+type discardHandler struct{}
+
+func (h *discardHandler) Enabled(context.Context, slog.Level) bool { return false }
+func (h *discardHandler) Handle(context.Context, slog.Record) error { return nil }
+func (h *discardHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *discardHandler) WithGroup(string) slog.Handler { return h }
+
 type noneType struct {
 }
 
 func (noneType) makeHandler(arg string) (slog.Handler, error) {
-	return slog.DiscardHandler, nil
+	return &discardHandler{}, nil
 }
 
 type stdoutType struct {
