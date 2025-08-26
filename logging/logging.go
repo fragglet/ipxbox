@@ -5,7 +5,6 @@ package logging
 import (
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"strings"
@@ -64,15 +63,6 @@ func (s *Spec) MakeLogger() (*slog.Logger, error) {
 		return nil, err
 	}
 	return slog.New(handler), nil
-}
-
-// TODO: Delete this function
-func (s *Spec) MakeLogLogger() (*log.Logger, error) {
-	handler, err := s.Type.makeHandler(s.Arg)
-	if err != nil {
-		return nil, err
-	}
-	return slog.NewLogLogger(handler, slog.LevelInfo), nil
 }
 
 // MakeFlag registers the --logging flag, and returns a `Spec` that will be
