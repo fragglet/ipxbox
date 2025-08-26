@@ -85,7 +85,7 @@ disabled. To enable it, add `--enable_pptp` to the command line (if
 running with `systemd`, make sure to update your configuration file).
 For example, the command might now look like:
 ```
-ipxbox --enable_syslog --port=10500 --enable_pptp
+ipxbox --logging=syslog --port=10500 --enable_pptp
 ```
 The PPTP protocol uses GRE tunneling, and sending/receiving GRE packets
 requires raw sockets access. Therefore on a Linux system you will want
