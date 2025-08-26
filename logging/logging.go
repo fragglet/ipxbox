@@ -55,6 +55,9 @@ func MakeFlag() *Spec {
 	spec := &Spec{TypeNone, ""}
 	flag.Func("logging", "log output; options are none; stdout; syslog[:addr]", func(s string) error {
 		parts := strings.SplitN(s, ":", 2)
+		if len(parts) == 1 {
+			parts = append(parts, "")
+		}
 		t, ok := loggingTypes[parts[0]]
 		if !ok {
 			return fmt.Errorf("invalid logging output type %q", parts[0])
