@@ -5,8 +5,6 @@ package logging
 import (
 	"log/slog"
 	"log/syslog"
-
-	slogsyslog "github.com/samber/slog-syslog/v2"
 )
 
 const (
@@ -31,9 +29,16 @@ func (syslogType) makeHandler(arg string) (slog.Handler, error) {
 		return nil, err
 	}
 
-	handler := slogsyslog.Option{
-		Level:  slog.LevelInfo,
-		Writer: writer,
-	}.NewSyslogHandler()
-	return handler, nil
+	// We use slog's built-in plain text handler to format the log
+	// messages sent to syslog. The only thing we don't send is the
+	// timestamp, since that's recorded by the syslogd anyway.
+	return slog.NewTextHandler(writer, &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == "time" {
+				return slog.Attr{}
+			} else {
+				return a
+			}
+		},
+	}), nil
 }
