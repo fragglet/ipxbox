@@ -15,6 +15,7 @@ import (
 	"github.com/fragglet/ipxbox/module/pptp"
 	"github.com/fragglet/ipxbox/module/qproxy"
 	"github.com/fragglet/ipxbox/module/server"
+	"github.com/fragglet/ipxbox/logging"
 	"github.com/fragglet/ipxbox/network"
 	"github.com/fragglet/ipxbox/network/addressable"
 	"github.com/fragglet/ipxbox/network/filter"
@@ -22,7 +23,6 @@ import (
 	"github.com/fragglet/ipxbox/network/stats"
 	"github.com/fragglet/ipxbox/network/tappable"
 	"github.com/fragglet/ipxbox/phys"
-	"github.com/fragglet/ipxbox/syslog"
 
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
@@ -31,7 +31,6 @@ import (
 var (
 	dumpPackets  = flag.String("dump_packets", "", "Write packets to a .pcap file with the given name.")
 	allowNetBIOS = flag.Bool("allow_netbios", false, "If true, allow packets to be forwarded that may contain Windows file sharing (NetBIOS) packets.")
-	enableSyslog = flag.Bool("enable_syslog", false, "If true, client connects/disconnects are logged to syslog")
 	enableIpxpkt = flag.Bool("enable_ipxpkt", false, "If true, route encapsulated packets from the IPXPKT.COM driver to the physical network")
 	enablePPTP   = flag.Bool("enable_pptp", false, "If true, run PPTP VPN server on TCP port 1723.")
 )
@@ -99,24 +98,20 @@ func main() {
 	)
 
 	mainmod.Initialize()
+	logspec := logging.MakeFlag()
 
 	flag.Parse()
 
 	ctx := context.Background()
 
-	var logger *log.Logger
-	if *enableSyslog {
-		var err error
-		logger, err = syslog.NewLogger(
-			syslog.LOG_NOTICE|syslog.LOG_DAEMON, 0)
-		if err != nil {
-			log.Fatalf("failed to init syslog: %v", err)
-		}
+	logger, err := logspec.MakeLogLogger()
+	if err != nil {
+		log.Fatalf("error initializing logging: %v", err)
 	}
 
 	net, uplinkable := makeNetwork(ctx)
 
-	err := mainmod.Start(ctx, &module.Parameters{
+	err = mainmod.Start(ctx, &module.Parameters{
 		Network:    net,
 		Uplinkable: uplinkable,
 		Logger:     logger,
