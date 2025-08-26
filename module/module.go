@@ -3,7 +3,7 @@ package module
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	"github.com/fragglet/ipxbox/network"
 )
@@ -30,7 +30,7 @@ type Parameters struct {
 	Uplinkable network.Network
 
 	// Logger should be used for reporting log messages.
-	Logger *log.Logger
+	Logger *slog.Logger
 }
 
 var (

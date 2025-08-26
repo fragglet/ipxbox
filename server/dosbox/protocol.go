@@ -3,7 +3,7 @@ package dosbox
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -38,13 +38,7 @@ type Protocol struct {
 
 	// If not nil, log entries are written as clients connect and
 	// disconnect.
-	Logger *log.Logger
-}
-
-func (p *Protocol) log(format string, args ...any) {
-	if p.Logger != nil {
-		p.Logger.Printf(format, args...)
-	}
+	Logger *slog.Logger
 }
 
 func isRegistrationPacket(packet *ipx.Packet) bool {
@@ -56,6 +50,10 @@ func isRegistrationPacket(packet *ipx.Packet) bool {
 // registration packet.
 func (p *Protocol) IsRegistrationPacket(packet *ipx.Packet) bool {
 	return isRegistrationPacket(packet)
+}
+
+func ipxAttr(addr ipx.Addr) slog.Attr {
+	return slog.String("ipx_address", addr.String())
 }
 
 // StartClient is invoked as a new goroutine when a new client connects.
@@ -72,17 +70,20 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 		return err
 	}
 	nodeAddr := network.NodeAddress(node)
+	logger := p.Logger.With(
+		server.AddrAttr(remoteAddr),
+		ipxAttr(nodeAddr))
+	logger.Info("client connected")
+
 	defer func() {
 		node.Close()
 		statsString := stats.Summary(node)
 		if statsString != "" {
-			p.log("%s (IPX address %s): final statistics: %s",
-				remoteAddr.String(), nodeAddr.String(), statsString)
+			logger.Info("client disconnected",
+				slog.String("statistics", statsString))
 		}
 	}()
 
-	p.log("%s: new connection, assigned IPX address %s",
-		remoteAddr.String(), network.NodeAddress(node))
 	c := &client{
 		inner:        inner,
 		nodeAddr:     &nodeAddr,

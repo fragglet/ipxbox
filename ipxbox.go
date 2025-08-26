@@ -104,7 +104,7 @@ func main() {
 
 	ctx := context.Background()
 
-	logger, err := logspec.MakeLogLogger()
+	logger, err := logspec.MakeLogger()
 	if err != nil {
 		log.Fatalf("error initializing logging: %v", err)
 	}

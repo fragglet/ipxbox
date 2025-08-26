@@ -11,7 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -107,7 +107,7 @@ type Protocol struct {
 
 	// If not nil, log entries are written as clients connect and
 	// disconnect.
-	Logger *log.Logger
+	Logger *slog.Logger
 
 	// Clients *must* supply a password. Uplink is always authenticated.
 	Password string
@@ -118,12 +118,6 @@ type Protocol struct {
 	// packets on particular ports if nothing is received for a while.
 	// This controls the time for keepalives.
 	KeepaliveTime time.Duration
-}
-
-func (p *Protocol) log(format string, args ...any) {
-	if p.Logger != nil {
-		p.Logger.Printf(format, args...)
-	}
 }
 
 // IsRegistrationPacket returns true if this is an uplink packet of type
@@ -148,8 +142,10 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 		authenticated: false,
 		challenge:     make([]byte, MinChallengeLength),
 		addr:          remoteAddr,
+		logger:        p.Logger.With(server.AddrAttr(remoteAddr)),
 	}
-	p.log("new uplink client from %s", remoteAddr)
+	c.logger.Info("new uplink client")
+
 	if _, err := rand.Read(c.challenge); err != nil {
 		return err
 	}
@@ -163,8 +159,8 @@ func (p *Protocol) StartClient(ctx context.Context, inner ipx.ReadWriteCloser, r
 		node.Close()
 		statsString := stats.Summary(node)
 		if statsString != "" {
-			p.log("uplink client %s: final statistics: %s",
-				remoteAddr.String(), statsString)
+			c.logger.Info("uplink client disconnected",
+				slog.String("statistics", statsString))
 		}
 	}()
 	return ipx.DuplexCopyPackets(ctx, c, node)
@@ -180,6 +176,7 @@ type client struct {
 	mu            sync.Mutex
 	addr          net.Addr
 	lastSendTime  time.Time
+	logger        *slog.Logger
 }
 
 func (c *client) sendKeepalives(ctx context.Context) {
@@ -231,7 +228,7 @@ func (c *client) authenticate(msg *Message) error {
 	}
 	solution := SolveChallenge("client", c.p.Password, c.challenge)
 	if !bytes.Equal(msg.Solution, solution) {
-		c.p.log("uplink client %s authentication rejected", c.addr)
+		c.logger.Error("uplink client authentication rejected")
 		c.Close()
 		return c.sendUplinkMessage(&Message{
 			Type: MessageTypeSubmitSolutionRejected,
@@ -239,7 +236,7 @@ func (c *client) authenticate(msg *Message) error {
 	}
 	c.mu.Lock()
 	if !c.authenticated {
-		c.p.log("uplink from %s authenticated successfully", c.addr)
+		c.logger.Info("uplink client authenticated successfully")
 		c.authenticated = true
 		// Don't send a keepalive immediately.
 		c.lastSendTime = time.Now()
@@ -265,7 +262,7 @@ func (c *client) handleUplinkPacket(packet *ipx.Packet) error {
 	case MessageTypeSubmitSolution:
 		return c.authenticate(&msg)
 	case MessageTypeClose:
-		c.p.log("uplink client %s closed connection", c.addr)
+		c.logger.Info("uplink client closed connection")
 		c.Close()
 	}
 	return nil

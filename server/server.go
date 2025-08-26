@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -31,7 +31,7 @@ type Config struct {
 
 	// If not nil, log entries are written as clients connect and
 	// disconnect.
-	Logger *log.Logger
+	Logger *slog.Logger
 }
 
 // Protocol implements the inner protocol logic of the server.
@@ -109,12 +109,6 @@ func New(addr string, c *Config) (*Server, error) {
 	}, nil
 }
 
-func (s *Server) log(format string, args ...any) {
-	if s.config.Logger != nil {
-		s.config.Logger.Printf(format, args...)
-	}
-}
-
 // findProtocol checks the protocols supported by the server and returns
 // a Protocol that matches the given packet. If no valid protocols are
 // found then nil, false is returned.
@@ -125,6 +119,11 @@ func (s *Server) findProtocol(packet *ipx.Packet) (Protocol, bool) {
 		}
 	}
 	return nil, false
+}
+
+// AddrAttr returns a `slog.Attr` referencing the given `net.Addr`.
+func AddrAttr(addr net.Addr) slog.Attr {
+	return slog.String("address", addr.String())
 }
 
 // newClient is invoked when a new client should be started. When called, a
@@ -150,7 +149,9 @@ func (s *Server) newClient(ctx context.Context, protocol Protocol, addr *net.UDP
 			err = nil
 		}
 		if err != nil {
-			s.log("client %s terminated abnormally: %v", addrStr, err)
+			s.config.Logger.Error("client terminated abnormally",
+				AddrAttr(addr),
+				slog.String("error", err.Error()))
 		}
 		cancel()
 		c.Close()
@@ -211,9 +212,9 @@ func (s *Server) checkClientTimeouts() time.Time {
 		// Nothing received in a long time? Time out the connection.
 		timeoutTime := c.lastReceiveTime.Add(s.config.ClientTimeout)
 		if now.After(timeoutTime) {
-			s.log(("client %s timed out: nothing received " +
-				"since %s."),
-				c.addr.String(), c.lastReceiveTime)
+			s.config.Logger.Error("client timed out",
+				AddrAttr(c.addr),
+				slog.Time("last_receive_time", c.lastReceiveTime))
 			c.Close()
 		}
 
