@@ -1,3 +1,5 @@
+// Package logging provides a command line flag for configuring the logging
+// output format for Go's structured logging.
 package logging
 
 import (
@@ -9,13 +11,21 @@ import (
 	"strings"
 )
 
+// Type represents a type of logging output, and is used to instantiate a
+// `slog.Handler` for writing logging output.
 type Type interface {
 	makeHandler(arg string) (slog.Handler, error)
 }
 
 var (
+	// TypeNone just discards all log output.
 	TypeNone   = &noneType{}
+
+	// TypeStdout writes log output to stdout.
 	TypeStdout = &stdoutType{}
+
+	// TypeSyslog writes log output to the Unix syslog, or sends it to
+	// a remote syslog server.
 	TypeSyslog = &syslogType{}
 
 	loggingTypes = map[string]Type{
@@ -39,11 +49,15 @@ func (stdoutType) makeHandler(arg string) (slog.Handler, error) {
 	return slog.NewTextHandler(os.Stdout, nil), nil
 }
 
+// Spec is the parsed form of the --logging command line flag, consisting of
+// the logging type, plus an optional string argument for instantiating the
+// `slog.Handler`.
 type Spec struct {
 	Type Type
 	Arg  string
 }
 
+// MakeLogger instantiates an `slog.Logger` based on the logging Spec.
 func (s *Spec) MakeLogger() (*slog.Logger, error) {
 	handler, err := s.Type.makeHandler(s.Arg)
 	if err != nil {
@@ -61,6 +75,8 @@ func (s *Spec) MakeLogLogger() (*log.Logger, error) {
 	return slog.NewLogLogger(handler, slog.LevelInfo), nil
 }
 
+// MakeFlag registers the --logging flag, and returns a `Spec` that will be
+// populated at flag parsing time.
 func MakeFlag() *Spec {
 	spec := &Spec{TypeNone, ""}
 	flag.Func("logging", "log output; options are none; stdout; syslog[:addr]", func(s string) error {
