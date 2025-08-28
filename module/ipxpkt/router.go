@@ -5,6 +5,7 @@ package ipxpkt
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/fragglet/ipxbox/ipx"
@@ -30,6 +31,7 @@ type Router struct {
 	node          network.Node
 	packetCounter uint16
 	fr            frameReassembler
+	logger        *slog.Logger
 }
 
 func (r *Router) Close() {
@@ -70,7 +72,10 @@ func (r *Router) ReadPacketData() ([]byte, gopacket.CaptureInfo, error) {
 		}
 		frame, err := r.unwrapFrame(packet)
 		if err != nil {
-			// TODO: Log error?
+			r.logger.Error("error unwrapping frame",
+				slog.String("ipx_address", packet.Header.Src.Addr.String()),
+				slog.String("ipx_dest_address", packet.Header.Dest.Addr.String()),
+				slog.String("error", err.Error()))
 			continue
 		}
 		ci := gopacket.CaptureInfo{
@@ -138,9 +143,10 @@ func (r *Router) WritePacketData(frame []byte) error {
 	return nil
 }
 
-func NewRouter(node network.Node) *Router {
+func NewRouter(node network.Node, logger *slog.Logger) *Router {
 	r := &Router{
-		node: node,
+		node:   node,
+		logger: logger,
 	}
 	r.fr.init()
 	return r

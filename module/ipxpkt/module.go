@@ -23,7 +23,7 @@ func (m *mod) Initialize() {
 
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 	port := network.MustMakeNode(params.Network)
-	r := NewRouter(port)
+	r := NewRouter(port, params.Logger)
 
 	tapConn, err := m.bridge.EthernetStream(true)
 	if err != nil {
