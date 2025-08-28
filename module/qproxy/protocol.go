@@ -43,6 +43,11 @@ var (
 	messageTooShort = errors.New("message too short to decode")
 )
 
+// TODO: Replace with slog.Debug() calls
+func debug(fmt string, args ...any) {
+	//log.Printf(fmt, args...)
+}
+
 type reliableMessage struct {
 	Flags    uint16
 	Sequence uint32

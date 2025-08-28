@@ -36,11 +36,6 @@ type Config struct {
 	Logger *slog.Logger
 }
 
-// TODO: Replace with slog.Debug() calls
-func debug(fmt string, args ...any) {
-	//log.Printf(fmt, args...)
-}
-
 func errorAttr(err error) slog.Attr {
 	return slog.String("error", err.Error())
 }
@@ -288,7 +283,9 @@ func (p *Proxy) garbageCollect() {
 		expiredConns := []ipx.HeaderAddr{}
 		for addr, c := range p.conns {
 			if now.Sub(c.lastRXTime) > p.config.IdleTimeout {
-				debug("timeout for %s: idle %s", c.conn.RemoteAddr(), now.Sub(c.lastRXTime))
+				p.config.Logger.Debug("connection timed out",
+					addrAttr(c.conn.RemoteAddr()),
+					slog.Time("last_rx_time", c.lastRXTime))
 				expiredConns = append(expiredConns, addr)
 			}
 		}
