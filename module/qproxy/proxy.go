@@ -53,6 +53,7 @@ type connection struct {
 	connectedPort int
 	ipxSocket     uint16
 	closed        bool
+	logger        *slog.Logger
 }
 
 // handleAccept checks if a packet received from the main server port is a
@@ -90,7 +91,7 @@ func (c *connection) handleAccept(packet []byte, serverAddr *net.UDPAddr) {
 			Port: c.connectedPort,
 		}
 		if _, err := c.conn.WriteToUDP([]byte{}, destAddress); err != nil {
-			c.p.config.Logger.Error("error sending firewall traversal packet", errorAttr(err))
+			c.logger.Error("error sending firewall traversal packet", errorAttr(err))
 		}
 	}
 }
@@ -138,8 +139,7 @@ func (c *connection) receivePackets() {
 		case c.closed:
 			return
 		case err != nil:
-			c.p.config.Logger.Error("error receiving UDP packets for connection",
-				addrAttr(c.conn.RemoteAddr()),
+			c.logger.Error("error receiving UDP packets for connection",
 				errorAttr(err))
 			return
 		}
@@ -185,6 +185,12 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	logger := p.config.Logger.With(
+		addrAttr(conn.RemoteAddr()),
+		slog.String("ipx_address", ipxAddr.Addr.String()))
+	logger.Debug("new connection opened to Quake server")
+
 	c := &connection{
 		p:             p,
 		ipxAddr:       ipxAddr,
@@ -192,6 +198,7 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 		lastRXTime:    time.Now(),
 		connectedPort: -1,
 		ipxSocket:     connectedIPXSocket,
+		logger:        logger,
 	}
 	c.rs.init(c.sendToUpstream, c.sendToDownstream)
 	p.conns[*ipxAddr] = c
@@ -204,6 +211,7 @@ func (p *Proxy) closeConnection(addr *ipx.HeaderAddr) {
 	if !ok {
 		return
 	}
+	c.logger.Debug("connection closed")
 	c.closed = true
 	delete(p.conns, *addr)
 	c.conn.Close()
@@ -242,8 +250,7 @@ func (p *Proxy) processPacket(packet *ipx.Packet) {
 	}
 	c.lastRXTime = time.Now()
 	if _, err := c.conn.WriteToUDP(packet.Payload[quakeHeaderBytes:], &p.address); err != nil {
-		p.config.Logger.Error("failed to forward IPX packet to UDP server",
-			addrAttr(&p.address),
+		c.logger.Error("failed to forward IPX packet to UDP server",
 			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
@@ -260,7 +267,7 @@ func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 	msg := packet.Payload[quakeHeaderBytes:]
 	eaten, err := c.rs.receiveFromDownstream(msg)
 	if err != nil {
-		p.config.Logger.Error("error processing packet from downstream",
+		c.logger.Error("error processing packet from downstream",
 			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
@@ -269,7 +276,7 @@ func (p *Proxy) processConnectedPacket(packet *ipx.Packet) {
 		return
 	}
 	if err := c.sendToUpstream(msg); err != nil {
-		p.config.Logger.Error("failed to forward IPX packet to UDP server",
+		c.logger.Error("failed to forward IPX packet to UDP server",
 			errorAttr(err))
 		p.closeConnection(&packet.Header.Src)
 	}
@@ -283,8 +290,7 @@ func (p *Proxy) garbageCollect() {
 		expiredConns := []ipx.HeaderAddr{}
 		for addr, c := range p.conns {
 			if now.Sub(c.lastRXTime) > p.config.IdleTimeout {
-				p.config.Logger.Debug("connection timed out",
-					addrAttr(c.conn.RemoteAddr()),
+				c.logger.Debug("connection timed out",
 					slog.Time("last_rx_time", c.lastRXTime))
 				expiredConns = append(expiredConns, addr)
 			}
