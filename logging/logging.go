@@ -74,9 +74,9 @@ func (s *Spec) MakeLogger() (*slog.Logger, error) {
 	return slog.New(handler), nil
 }
 
-// MakeFlag registers the --logging flag, and returns a `Spec` that will be
+// RegisterFlag registers the --logging flag, and returns a `Spec` that will be
 // populated at flag parsing time.
-func MakeFlag() *Spec {
+func RegisterFlag() *Spec {
 	spec := &Spec{TypeNone, ""}
 	flag.Func("logging", "log output; options are none; stdout; syslog[:addr]", func(s string) error {
 		parts := strings.SplitN(s, ":", 2)

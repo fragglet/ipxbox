@@ -98,7 +98,7 @@ func main() {
 	)
 
 	mainmod.Initialize()
-	logspec := logging.MakeFlag()
+	logspec := logging.RegisterFlag()
 
 	flag.Parse()
 
