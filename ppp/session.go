@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"golang.org/x/sync/errgroup"
 	"io"
+	"log/slog"
 	"math/rand"
 	"strings"
 	"sync"
@@ -53,6 +54,7 @@ type Session struct {
 	numProtocolRejects uint8
 	magicNumber        uint32
 	terminateError     error
+	logger             *slog.Logger
 }
 
 func (s *Session) Close() error {
@@ -155,7 +157,7 @@ func (s *Session) recvAndProcess() error {
 	pkt := gopacket.NewPacket(buf[:nbytes], layers.LayerTypePPP, gopacket.Default)
 	pppLayer := pkt.Layer(layers.LayerTypePPP)
 	if pppLayer == nil {
-		// TODO: bad packet - log error?
+		s.logger.Error("packet not a PPP frame")
 		return nil
 	}
 	ppp := pppLayer.(*layers.PPP)
@@ -175,7 +177,8 @@ func (s *Session) recvAndProcess() error {
 	if ppp.PPPType == PPPTypeIPX {
 		packet := &ipx.Packet{}
 		if err := packet.UnmarshalBinary(ppp.LayerPayload()); err != nil {
-			// TODO: Bad packet - log error?
+			s.logger.Error("error unmarshaling IPX frame",
+				slog.String("error", err.Error()))
 			return nil
 		}
 		s.node.WritePacket(packet)
@@ -333,11 +336,18 @@ func (s *Session) Terminate(err error) {
 
 func (s *Session) doRun() error {
 	if err := s.negotiate(); err != nil {
+		s.logger.Error("failed initial negotiation")
 		return err
 	}
 	if err := s.negotiateIPX(); err != nil {
+		s.logger.Error("failed to negotiate IPX address")
 		return err
 	}
+
+	addr := network.NodeAddress(s.node)
+	s.logger.Info("negotiated IPX address, beginning PPP session",
+		slog.String("ipx_address", addr.String()))
+
 	if err := s.runNetwork(); err != nil {
 		return err
 	}
@@ -379,11 +389,12 @@ func (s *Session) Run(ctx context.Context) error {
 	return err
 }
 
-func NewSession(channel io.ReadWriteCloser, node network.Node) *Session {
+func NewSession(channel io.ReadWriteCloser, node network.Node, logger *slog.Logger) *Session {
 	return &Session{
 		state:       stateEstablish,
 		channel:     channel,
 		node:        node,
 		negotiators: make(map[layers.PPPType]*negotiator),
+		logger:      logger,
 	}
 }
