@@ -47,6 +47,7 @@ func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
 		p := New(&Config{
 			Address:     addr,
 			IdleTimeout: clientTimeout,
+			Logger:      params.Logger,
 		}, node)
 		eg.Go(proxyRunner(egctx, p, addr))
 	}
