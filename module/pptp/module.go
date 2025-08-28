@@ -18,7 +18,7 @@ func (m *mod) Initialize() {
 }
 
 func (m *mod) Start(ctx context.Context, params *module.Parameters) error {
-	pptps, err := pptp.NewServer(params.Network)
+	pptps, err := pptp.NewServer(params.Network, params.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to start PPTP server: %v", err)
 	}

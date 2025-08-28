@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
 
 	"github.com/fragglet/ipxbox/network"
@@ -115,9 +116,15 @@ func (c *Connection) startPPPSession(ctx context.Context, sendCallID uint16) {
 	}
 	addr := c.conn.RemoteAddr().(*net.TCPAddr)
 	var err error
+	logger := c.s.logger.With(
+		slog.String("address", addr.String()),
+		slog.Int("send_call_id", int(sendCallID)),
+		slog.Int("call_id", int(c.callID)))
+	logger.Info("starting GRE session")
 	gre, err := c.s.greServer.startSession(addr.IP, sendCallID, c.callID)
 	if err != nil {
-		// TODO: Send back error message? Log error?
+		c.s.logger.Error("error starting GRE session",
+			slog.String("error", err.Error()))
 		c.conn.Close()
 		return
 	}
@@ -131,8 +138,10 @@ func (c *Connection) startPPPSession(ctx context.Context, sendCallID uint16) {
 	go func() {
 		err := c.ppp.Run(ctx)
 		if err != nil {
-			// TODO: log error?
+			logger.Error("PPP session error",
+				slog.String("error", err.Error()))
 		}
+		logger.Info("PPP session terminated")
 		// Once the PPP session terminates, close the PPTP control
 		// connection as well.
 		c.Close()
@@ -209,7 +218,8 @@ messageLoop:
 		// alive?
 		msg, err := c.readNextMessage()
 		if err != nil {
-			// TODO: log?
+			c.s.logger.Error("error reading PPTP message",
+				slog.String("error", err.Error()))
 			break
 		}
 		msgtype := binary.BigEndian.Uint16(msg[6:8])
@@ -244,6 +254,7 @@ type Server struct {
 	nextCallID uint16
 	n          network.Network
 	greServer  *greServer
+	logger     *slog.Logger
 }
 
 // Run listens for and accepts new connections to the server. It blocks until
@@ -268,7 +279,7 @@ func (s *Server) Close() error {
 	return s.listener.Close()
 }
 
-func NewServer(n network.Network) (*Server, error) {
+func NewServer(n network.Network, logger *slog.Logger) (*Server, error) {
 	gs, err := startGREServer()
 	if err != nil {
 		return nil, err
@@ -285,5 +296,6 @@ func NewServer(n network.Network) (*Server, error) {
 		nextCallID: 384,
 		n:          n,
 		greServer:  gs,
+		logger:     logger,
 	}, nil
 }
