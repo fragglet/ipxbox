@@ -6,6 +6,14 @@ import (
 	"errors"
 )
 
+const (
+	NcmdExit       = 0x80000000
+	NcmdRetransmit = 0x40000000
+	NcmdSetup      = 0x20000000
+	NcmdKill       = 0x10000000
+	NcmdChecksum   = 0x0fffffff
+)
+
 var (
 	ErrShortPacket = errors.New("packet too short")
 )
@@ -20,6 +28,31 @@ type GamePacket struct {
 	Player         byte
 	NumTics        byte
 	Commands       []byte
+}
+
+// GamePacketChecksum calculates the checksum for a marshaled GamePacket;
+// it should be called with the first four bytes stripped.
+func GamePacketChecksum(data []byte) uint32 {
+	result := uint32(0x1234567)
+	offset := 0
+	numDwords := len(data) / 4
+	for i := 0; i < numDwords; i++ {
+		result += binary.LittleEndian.Uint32(data[offset:offset+4]) * uint32(i + 1)
+		offset += 4
+	}
+	return result & NcmdChecksum
+}
+
+// UpdateChecksum updates the Checksum field of the given GamePacket. The
+// high bits that store additional information (setup, retransmit, etc.) are
+// left untouched.
+func (p *GamePacket) UpdateChecksum() {
+	marshaled, err := p.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	checksum := GamePacketChecksum(marshaled[4:])
+	p.Checksum = (p.Checksum & ^uint32(NcmdChecksum)) | checksum
 }
 
 func (p *GamePacket) MarshalBinary() ([]byte, error) {
