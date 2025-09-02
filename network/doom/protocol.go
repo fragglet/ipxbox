@@ -30,6 +30,19 @@ type GamePacket struct {
 	Commands       []byte
 }
 
+// ExpandTicNum takes the low byte of a tic number and "expands" it back
+// to a 32-bit value, using the base parameter as a reference.
+func ExpandTicNum(low byte, base uint32) uint32 {
+	result := (base & ^uint32(0xff)) | uint32(low)
+	switch {
+	case result > base && result-base > 64:
+		result -= 256
+	case result < base && base-result > 64:
+		result += 256
+	}
+	return result
+}
+
 // GamePacketChecksum calculates the checksum for a marshaled GamePacket;
 // it should be called with the first four bytes stripped.
 func GamePacketChecksum(data []byte) uint32 {

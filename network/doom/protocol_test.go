@@ -185,3 +185,39 @@ func TestUpdateChecksum(t *testing.T) {
 		t.Errorf("wrong checksum after update: want %08x, got %08x", want, p.Checksum)
 	}
 }
+
+func TestExpandTicNum(t *testing.T) {
+	tests := []struct {
+		base uint32
+		low  byte
+		want uint32
+	}{
+		{
+			base: 0x1234,
+			low:  0x35,
+			want: 0x1235,
+		},
+		{
+			base: 0x1234,
+			low:  0x33,
+			want: 0x1233,
+		},
+		{
+			base: 0x12fc,
+			low:  0x05,
+			want: 0x1305,
+		},
+		{
+			base: 0x1305,
+			low:  0xfc,
+			want: 0x12fc,
+		},
+	}
+
+	for _, test := range tests {
+		got := ExpandTicNum(test.low, test.base)
+		if got != test.want {
+			t.Errorf("wrong tic for ExpandTicNum(%02x, %08x); want %08x, got %08x", test.low, test.base, test.want, got)
+		}
+	}
+}
