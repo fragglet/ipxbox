@@ -24,10 +24,11 @@ jobs:
 
     - name: Test
       run: |
-        go test network/doom/*.go
-        go test network/pipe/*.go
-        go test network/filter/*.go
-        go test ipx/*.go
+        go test -cover \
+            $PWD/ipx            \
+            $PWD/network/doom   \
+            $PWD/network/pipe   \
+            $PWD/network/filter
 
   crosscompile:
     strategy:
