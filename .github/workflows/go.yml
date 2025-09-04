@@ -52,6 +52,7 @@ jobs:
       run: |
         mkdir artifacts
         cd artifacts
+        go build -v ../standalone/ipxbox_minimal.go
         go build -tags nopcap -v ../ipxbox.go
         go build -tags nopcap -v ../standalone/ipxbox_uplink.go
         go build -tags nopcap -v ../standalone/standalone_ipxpkt.go
