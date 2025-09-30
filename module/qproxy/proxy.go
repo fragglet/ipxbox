@@ -187,7 +187,7 @@ func (p *Proxy) newConnection(ipxAddr *ipx.HeaderAddr) (*connection, error) {
 	}
 
 	logger := p.config.Logger.With(
-		addrAttr(conn.RemoteAddr()),
+		addrAttr(&p.address),
 		slog.String("ipx_address", ipxAddr.Addr.String()))
 	logger.Debug("new connection opened to Quake server")
 
