@@ -5,9 +5,11 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,6 +93,28 @@ type Server struct {
 	timeoutCheckTime time.Time
 }
 
+func addrString(addr *net.UDPAddr) string {
+	// TODO: If addr.IP is non-zero, just return addr.String()
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "[unknown]"
+	}
+	result := []string{}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		// We only support IPv4; it's all dosbox supports.
+		ip4 := ipnet.IP.To4()
+		if ip4 == nil {
+			continue
+		}
+		result = append(result, fmt.Sprintf("%s:%d", ip4.String(), addr.Port))
+	}
+	return strings.Join(result, ", or ")
+}
+
 // New creates a new Server, listening on the given address.
 func New(addr string, c *Config) (*Server, error) {
 	udp4Addr, err := net.ResolveUDPAddr("udp4", addr)
@@ -101,6 +125,7 @@ func New(addr string, c *Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.Logger.Info(fmt.Sprintf("Server started, connect on %s", addrString(udp4Addr)))
 	return &Server{
 		config:           c,
 		socket:           socket,
