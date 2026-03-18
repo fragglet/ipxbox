@@ -76,6 +76,7 @@ jobs:
           VERSION=git-$(git rev-parse --short HEAD)
         fi
         OS_ARCH=${{ matrix.goos }}-${{ matrix.goarch }}
+        OS_ARCH=${OS_ARCH/darwin/macos}
         echo "VERSION=$OS_ARCH-$VERSION" >> $GITHUB_OUTPUT
 
     # We package the artifacts in a .tar to preserve permissions.
