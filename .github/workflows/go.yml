@@ -70,13 +70,22 @@ jobs:
     # We package the artifacts in a .tar to preserve permissions.
     - name: Tar artifacts
       run: |
-        tar -C artifacts -czf artifacts.tar.gz .
+        mv artifacts ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
+        tar -czf ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz \
+                 ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
       if: ${{ matrix.goos != 'windows' }}
 
     - name: Upload build
       uses: actions/upload-artifact@v7
+      if: ${{ matrix.goos != 'windows' }}
       with:
-        path: "artifacts.tar.gz"
+        path: "ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
         name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
         archive: false
 
+    - name: Upload build (Windows)
+      uses: actions/upload-artifact@v7
+      if: ${{ matrix.goos == 'windows' }}
+      with:
+        path: "artifacts"
+        name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
