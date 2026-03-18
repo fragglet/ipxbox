@@ -67,20 +67,31 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         GOOS: ${{ matrix.goos }}
 
+    - name: Find Git version
+      id: version
+      run: |
+        if git describe --exact-match --tags >/dev/null; then
+          VERSION=$(git describe --exact-match --tags)
+        else
+          VERSION=git-$(git rev-parse --short HEAD)
+        fi
+        OS_ARCH=${{ matrix.goos }}-${{ matrix.goarch }}
+        echo "VERSION=$OS_ARCH-$VERSION" >> $GITHUB_OUTPUT
+
     # We package the artifacts in a .tar to preserve permissions.
     - name: Tar artifacts
       run: |
-        mv artifacts ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
-        tar -czf ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz \
-                 ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
+        mv artifacts ipxbox-${{steps.version.outputs.VERSION}}
+        tar -czf ipxbox-${{steps.version.outputs.VERSION}}.tar.gz \
+                 ipxbox-${{steps.version.outputs.VERSION}}
       if: ${{ matrix.goos != 'windows' }}
 
     - name: Upload build
       uses: actions/upload-artifact@v7
       if: ${{ matrix.goos != 'windows' }}
       with:
-        path: "ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-        name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
+        path: "ipxbox-${{steps.version.outputs.VERSION}}.tar.gz"
+        name: "ipxbox-${{steps.version.outputs.VERSION}}"
         archive: false
 
     - name: Upload build (Windows)
@@ -88,4 +99,4 @@ jobs:
       if: ${{ matrix.goos == 'windows' }}
       with:
         path: "artifacts"
-        name: ipxbox_${{ matrix.goos }}_${{ matrix.goarch }}
+        name: "ipxbox-${{steps.version.outputs.VERSION}}"
