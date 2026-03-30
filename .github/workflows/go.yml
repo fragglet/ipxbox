@@ -38,11 +38,8 @@ jobs:
   crosscompile:
     strategy:
       matrix:
-        goarch: [386, amd64, arm64]
+        goarch: [amd64, arm64]
         goos: [darwin, freebsd, linux, windows]
-        exclude:
-        - goarch: 386
-          goos: darwin
 
     runs-on: ubuntu-latest
     steps:
