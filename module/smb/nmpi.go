@@ -130,8 +130,11 @@ func (a *NmpiAnnouncer) handleQuery(pkt *ipx.Packet, f *NmpiFrame) error {
 
 	return a.writer.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
-			Dest: pkt.Header.Src,
-			Src:  a.addr,
+			Dest:       pkt.Header.Src,
+			Src:        a.addr,
+			Length:     uint16(ipx.HeaderLength + len(payload)),
+			Checksum:   0xffff,
+			PacketType: pkt.Header.PacketType,
 		},
 		Payload: payload,
 	})
@@ -193,7 +196,10 @@ func (a *NmpiAnnouncer) Register() error {
 					Addr:   ipx.AddrBroadcast,
 					Socket: nmpiSocket,
 				},
-				Src: a.addr,
+				Src:        a.addr,
+				Length:     uint16(ipx.HeaderLength + len(payload)),
+				Checksum:   0xffff,
+				PacketType: 0x14,
 			},
 			Payload: payload,
 		})
