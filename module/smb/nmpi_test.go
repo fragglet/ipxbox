@@ -150,9 +150,9 @@ func TestAnnouncer(t *testing.T) {
 		want := &NmpiFrame{
 			operation:     NmpiOpFound,
 			nameType:      NmpiTypeMachine,
-			name:          "BAZ",
+			name:          "FOOBAR",
 			service:       0,
-			sourceName:    "FOOBAR",
+			sourceName:    "BAZ",
 			sourceService: 0,
 		}
 		if !reflect.DeepEqual(want, &got) {

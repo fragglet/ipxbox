@@ -125,10 +125,6 @@ func (a *NmpiAnnouncer) handleQuery(pkt *ipx.Packet, f *NmpiFrame) error {
 
 	reply := *f
 	reply.operation = NmpiOpFound
-	reply.name = f.sourceName
-	reply.service = f.sourceService
-	reply.sourceName = a.name
-	reply.sourceService = a.service
 
 	payload, _ := reply.MarshalBinary()
 
