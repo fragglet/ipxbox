@@ -162,6 +162,7 @@ func (p *client) sendRegistrationReply() {
 func (p *client) sendPing() {
 	p.inner.WritePacket(&ipx.Packet{
 		Header: ipx.Header{
+			Length: 30,
 			Dest: ipx.HeaderAddr{
 				Addr:   ipx.AddrBroadcast,
 				Socket: 2,
